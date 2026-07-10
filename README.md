@@ -20,6 +20,25 @@ never a big merge.
 
 You supply everything below; **no game data or Sony files live in this repo.**
 
+### Firmware / console
+A **jailbroken PS4 with GoldHEN** (or an equivalent HEN). The pkg itself imposes no
+firmware floor (`param.sfo` `SYSTEM_VER = 0`), so the real requirement is simply a
+firmware your jailbreak/GoldHEN supports **and** on which the two GLES modules below
+are available.
+
+- ✅ **Tested: firmware 9.00 (GoldHEN).** This is the only version verified on real
+  hardware.
+- 🟡 **Other firmwares: expected to work but untested.** This is ordinary
+  OpenOrbis-SDL homebrew (`libjbc` acts on an already-jailbroken kernel, it is not
+  version-locked), so any GoldHEN-capable firmware that has the GLES modules —
+  roughly **5.05 through 11.00** — *should* run it. The most likely per-firmware
+  wrinkle is the availability/compatibility of the GLES modules (Piglet/Shacc); if
+  your console has them at the shared path, the rest of the stack is well-trodden on
+  those firmwares. No PSN/online is used.
+
+If you try it on another firmware (5.05 in particular is common), a quick report of
+what works helps expand this list.
+
 ### 1. Game data
 This port is the **engine only**. Transfer the files below (FTP, e.g. GoldHEN's FTP
 server) to **`/data/fallout2/`** on the console.
