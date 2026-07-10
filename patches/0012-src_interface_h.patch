@@ -1,0 +1,13 @@
+diff --git a/src/interface.h b/src/interface.h
+index 2260c45..a3c47f9 100644
+--- a/src/interface.h
++++ b/src/interface.h
+@@ -55,6 +55,8 @@ int interfaceBarSwapHands(bool animated);
+ int interfaceGetItemActions(int* leftItemAction, int* rightItemAction);
+ int interfaceCycleItemAction();
+ void _intface_use_item();
++// PS4 gamepad: reload the active-hand weapon directly (0 = reloaded, -1 = not).
++int interfaceGamepadReload();
+ int interfaceGetCurrentHand();
+ int interfaceGetActiveItem(Object** itemPtr);
+ int _intface_update_ammo_lights();

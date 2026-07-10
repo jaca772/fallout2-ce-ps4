@@ -1,0 +1,9 @@
+# LF everywhere (Windows checkouts must not smuggle CRLF into overlay scripts,
+# which breaks bash in WSL/CI — a real bug we hit while validating this).
+* text=auto eol=lf
+*.sh   text eol=lf
+*.patch text eol=lf
+# Binaries: never touch line endings.
+*.prx  binary
+*.sprx binary
+*.png  binary

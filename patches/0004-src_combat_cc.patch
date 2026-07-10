@@ -1,0 +1,294 @@
+diff --git a/src/combat.cc b/src/combat.cc
+index c1f2862..5d3593e 100644
+--- a/src/combat.cc
++++ b/src/combat.cc
+@@ -1928,6 +1928,12 @@ static Object* gCalledShotCritter;
+ // 0x56D374 call_win
+ static int gCalledShotWindow;
+ 
++// True while the called-shot (body-part) selection window is on screen. The PS4
++// gamepad reads this to hand cursor/button control back to the modal and to let
++// releasing R2 cancel it. gCalledShotWindow itself is not reset on close, so a
++// dedicated flag is used.
++static bool gCalledShotWindowActive = false;
++
+ // 0x56D378 combat_elev
+ static int _combat_elev;
+ 
+@@ -5667,6 +5673,8 @@ static int calledShotSelectHitLocation(Object* critter, int* hitLocation, int hi
+ 
+     windowRefresh(gCalledShotWindow);
+ 
++    gCalledShotWindowActive = true;
++
+     bool gameUiWasDisabled = gameUiIsDisabled();
+     if (gameUiWasDisabled) {
+         gameUiEnable();
+@@ -5707,6 +5715,8 @@ static int calledShotSelectHitLocation(Object* critter, int* hitLocation, int hi
+ 
+     windowDestroy(gCalledShotWindow);
+ 
++    gCalledShotWindowActive = false;
++
+     if (eventCode == KEY_ESCAPE) {
+         return -1;
+     }
+@@ -5891,6 +5901,258 @@ void _combat_attack_this(Object* target)
+     }
+ }
+ 
++// PS4 gamepad aim assist: living, non-party critters the player can reach, sorted
++// nearest-first. Works both in combat (targets to shoot) and out of combat
++// (people to talk to / interact with). Every candidate must be:
++//   - a living critter, not the player or a party follower,
++//   - within an engine-derived range (in combat: the current weapon's range; out
++//     of combat: the player's perception reach), verified with engine functions,
++//   - in a clear line of sight (the same _combat_is_shot_blocked test used for the
++//     hostile outline),
++//   - and, unless wholeMap is set, currently on screen (in the player's viewport).
++// Safe to call from the input-poll path: plain reads + object-list walk only, no
++// scripts / _process_bk.
++int combatGamepadListTargets(Object** out, int maxCount, bool wholeMap)
++{
++    if (out == nullptr || maxCount <= 0 || gDude == nullptr) {
++        return 0;
++    }
++
++    bool inCombat = isInCombat();
++
++    // Engine-derived reach. In combat this is the equipped weapon's range for the
++    // current attack mode; out of combat, the perception reach (same value the
++    // engine uses for line-of-sight awareness).
++    int maxRange;
++    if (inCombat) {
++        int hitMode;
++        bool aiming;
++        if (interfaceGetCurrentHitMode(&hitMode, &aiming) == -1) {
++            maxRange = 1;
++        } else {
++            maxRange = weaponGetRange(gDude, hitMode);
++            // Melee / unarmed (reach 1-2): you close the distance on foot, so the
++            // weapon's reach must NOT gate the target list — otherwise no enemy is
++            // ever "in range" and melee aim finds nothing. Use the perception reach
++            // so any enemy you could walk up to is targetable (the reach+attack AP
++            // cost is shown on the reticle message).
++            if (maxRange <= 2) {
++                maxRange = critterGetStat(gDude, STAT_PERCEPTION) * 5;
++            }
++        }
++    } else {
++        maxRange = critterGetStat(gDude, STAT_PERCEPTION) * 5;
++    }
++    if (maxRange < 1) {
++        maxRange = 1;
++    }
++
++    // Candidate source. In combat _combat_list already holds every critter on the
++    // elevation (_list_total); out of combat build a fresh critter list.
++    Object** list;
++    int listLen;
++    bool freeList = false;
++    if (inCombat) {
++        list = _combat_list;
++        listLen = _list_total;
++        if (list == nullptr) {
++            return 0;
++        }
++    } else {
++        listLen = objectListCreate(-1, gElevation, OBJ_TYPE_CRITTER, &list);
++        freeList = true;
++    }
++
++    int logicalW = screenGetWidth();
++    int visibleH = screenGetVisibleHeight();
++
++    int count = 0;
++    for (int i = 0; i < listLen && count < maxCount; i++) {
++        Object* c = list[i];
++        if (c == nullptr || c == gDude) {
++            continue;
++        }
++        if (FID_TYPE(c->fid) != OBJ_TYPE_CRITTER) {
++            continue;
++        }
++        if ((c->data.critter.combat.results & (DAM_DEAD | DAM_KNOCKED_OUT)) != 0) {
++            continue;
++        }
++        if (objectIsPartyMember(c)) {
++            continue; // companion/follower — not a target
++        }
++        // Reachable within range (engine range vs tile distance).
++        if (objectGetDistanceBetween(gDude, c) > maxRange) {
++            continue;
++        }
++        // Clear line of sight (same test as the hostile outline / shot check).
++        if (_combat_is_shot_blocked(gDude, gDude->tile, c->tile, c, nullptr)) {
++            continue;
++        }
++        // Viewport filter: unless searching the whole map, the target's tile must
++        // be on screen in the play area.
++        if (!wholeMap) {
++            int sx, sy;
++            if (tileToScreenXY(c->tile, &sx, &sy) != 0) {
++                continue;
++            }
++            if (sx < 0 || sx >= logicalW || sy < 0 || sy >= visibleH) {
++                continue;
++            }
++        }
++        out[count++] = c;
++    }
++
++    if (freeList && listLen != 0) {
++        objectListFree(list);
++    }
++
++    // Insertion sort by distance to the player (nearest first).
++    for (int i = 1; i < count; i++) {
++        Object* key = out[i];
++        int keyDist = objectGetDistanceBetween(gDude, key);
++        int j = i - 1;
++        while (j >= 0 && objectGetDistanceBetween(gDude, out[j]) > keyDist) {
++            out[j + 1] = out[j];
++            j--;
++        }
++        out[j + 1] = key;
++    }
++
++    return count;
++}
++
++// PS4 gamepad: true while the called-shot (VATS) body-part window is up, so the
++// pad code stops hijacking the cursor and lets the modal be clicked/cancelled.
++bool combatGamepadCalledShotActive()
++{
++    return gCalledShotWindowActive;
++}
++
++// PS4 gamepad: true when combat can be ended right now (no living, hostile,
++// still-engaging critter remains). Used by the "combat" action (R3): safe -> end
++// fight, else -> end turn.
++//
++// IMPORTANT: this runs from the input-poll path (mid-frame, re-entrant), so it
++// must do ONLY plain field reads. It deliberately does NOT call the engine's
++// _combatai_want_to_stop/_want_to_join helpers — those run _process_bk() and even
++// execute the critter's combat script (scriptExecProc), which corrupts engine
++// state when invoked re-entrantly and segfaults. Instead it mirrors the same
++// hostility test as combatAttemptEnd with simple reads and treats dead/knocked-
++// out and fleeing/disengaging critters as non-threats.
++bool combatGamepadCanEndCombat()
++{
++    if (!isInCombat() || _combat_list == nullptr) {
++        return false;
++    }
++
++    int dudeTeam = gDude->data.critter.combat.team;
++    int total = _list_com + _list_noncom;
++    for (int index = 0; index < total; index++) {
++        Object* critter = _combat_list[index];
++        if (critter == nullptr || critter == gDude) {
++            continue;
++        }
++        if (FID_TYPE(critter->fid) != OBJ_TYPE_CRITTER) {
++            continue;
++        }
++        // Dead / unconscious critters are no threat.
++        if ((critter->data.critter.combat.results & (DAM_DEAD | DAM_KNOCKED_OUT)) != 0) {
++            continue;
++        }
++        // Fleeing or disengaging critters are leaving the fight.
++        if ((critter->data.critter.combat.maneuver & (CRITTER_MANUEVER_FLEEING | CRITTER_MANEUVER_DISENGAGING)) != 0) {
++            continue;
++        }
++        // Hostile? Different team, or provoked (was hit by someone on its team,
++        // i.e. the player) — same condition combatAttemptEnd uses.
++        int critterTeam = critter->data.critter.combat.team;
++        Object* critterWhoHitMe = critter->data.critter.combat.whoHitMe;
++        bool hostile = critterTeam != dudeTeam
++            || (critterWhoHitMe != nullptr && critterWhoHitMe->data.critter.combat.team == critterTeam);
++        if (hostile) {
++            return false; // a living hostile still in the fight -> not safe to end
++        }
++    }
++    return true;
++}
++
++// PS4 gamepad: force a called-shot (aimed) attack, reusing the engine's body-part
++// selection UI and validation, regardless of the weapon's current aimed toggle.
++void combatGamepadAimedAttack(Object* target)
++{
++    if (target == nullptr || (gCombatState & COMBAT_STATE_PLAYER_TURN) == 0) {
++        return;
++    }
++
++    int hitMode;
++    bool aiming;
++    if (interfaceGetCurrentHitMode(&hitMode, &aiming) == -1) {
++        return;
++    }
++
++    // Validate as an aimed shot; on any problem fall back to the normal path so
++    // its message ("out of range", "out of ammo", ...) is shown.
++    if (_combat_check_bad_shot(gDude, target, hitMode, true) != COMBAT_BAD_SHOT_OK) {
++        _combat_attack_this(target);
++        return;
++    }
++
++    int hitLocation;
++    if (calledShotSelectHitLocation(target, &hitLocation, hitMode) != -1) {
++        _combat_attack(gDude, target, hitMode, hitLocation);
++    }
++}
++
++// Gamepad melee/unarmed: run up to the target, then (optionally) attack.
++//
++// The normal player attack (_combat_attack_this) refuses an out-of-range
++// target with "Target out of range" and stops. The enemy AI instead walks up
++// and then swings (_ai_move_steps_closer + _ai_attack, each blocking via
++// _combat_turn_run). We mirror that for the dude: register a run/walk-to-object
++// move, drain the animation queue synchronously, then run the normal attack —
++// which now sees us adjacent. If AP only covered part of the way, the attack
++// simply reports out-of-range like the AI would (moved what it could).
++//
++// attackAfter == false stops after the approach (run-up only, no swing).
++void combatGamepadApproachAndAttack(Object* target, bool attackAfter)
++{
++    if (target == nullptr || (gCombatState & COMBAT_STATE_PLAYER_TURN) == 0) {
++        return;
++    }
++
++    if (objectGetDistanceBetween(gDude, target) > 1) {
++        int actionPoints = gDude->data.critter.combat.ap;
++        if (actionPoints <= 0) {
++            // no AP to move: let the normal path show "out of range"
++            if (attackAfter) {
++                _combat_attack_this(target);
++            }
++            return;
++        }
++
++        reg_anim_begin(ANIMATION_REQUEST_RESERVED);
++        if (actionPoints >= critterGetStat(gDude, STAT_MAXIMUM_ACTION_POINTS) / 2
++            && artCritterFidShouldRun(gDude->fid)) {
++            animationRegisterRunToObject(gDude, target, actionPoints, 0);
++        } else {
++            animationRegisterMoveToObject(gDude, target, actionPoints, 0);
++        }
++        if (reg_anim_end() != 0) {
++            return;
++        }
++
++        _combat_turn_run();
++    }
++
++    // Now (hopefully) adjacent. Run-up-only mode stops here; otherwise do the
++    // normal attack, which re-checks range/AP and shows the usual message if we
++    // still fell short.
++    if (attackAfter) {
++        _combat_attack_this(target);
++    }
++}
++
+ // Highlights critters.
+ //
+ // 0x426AA8

@@ -1,0 +1,112 @@
+diff --git a/src/win32.cc b/src/win32.cc
+index 811f233..36f1c27 100644
+--- a/src/win32.cc
++++ b/src/win32.cc
+@@ -30,6 +30,10 @@
+ #include "platform/ios/paths.h"
+ #endif
+ 
++#ifdef __PS4__
++#include "platform/ps4/ps4.h"
++#endif
++
+ namespace fallout {
+ 
+ // 0x51E444 GNW95_isActive
+@@ -52,6 +56,13 @@ const char* getMacOsBundleResourcesPath()
+ 
+ int main(int argc, char* argv[])
+ {
++#ifdef __PS4__
++    // Piglet/shacc module setup only. The /data mount happens AFTER SDL_Init
++    // (see below) because libjbc's brief credential swap corrupts SDL's video
++    // service init if done first.
++    ps4PreSdlInit();
++#endif
++
+     scanUnimplementdParseCommandLineArguments(argc, argv);
+ 
+     int rc;
+@@ -98,19 +109,82 @@ int main(int argc, char* argv[])
+     chdir(SDL_AndroidGetExternalStoragePath());
+ #endif
+ 
++#ifdef __PS4__
++    // On PS4 each Sce service (VideoOut/AudioOut/Pad/UserService/Ipmi/...) opens
++    // an mbus client, and the process is capped at 8. Initialising AUDIO here
++    // together with VIDEO pushes the count past the limit and PS4_VideoInit dies
++    // with SIGSYS ("[mbus] onNewClient clientNum 10 over 8"). Match the working
++    // OpenOrbis SDL sample: bring up VIDEO (+JOYSTICK for the gamepad) now, and
++    // defer AUDIO to audioEngineInit() via SDL_InitSubSystem so the clients open
++    // spread out and stay under the cap.
++    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER) != 0) {
++        ps4Log("[ps4] SDL_Init(VIDEO|JOYSTICK|GAMECONTROLLER) FAILED: %s\n", SDL_GetError());
++        return EXIT_FAILURE;
++    }
++    ps4Log("[ps4] SDL_Init(VIDEO|JOYSTICK|GAMECONTROLLER) ok\n");
++#else
+     if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
+         return EXIT_FAILURE;
+     }
++#endif
+ 
+     atexit(SDL_Quit);
+ 
+     SDL_ShowCursor(SDL_DISABLE);
+ 
++#ifdef __PS4__
++    // Now that SDL's video/service init is done, mount /data and chdir into it.
++    // We jailbreak immediately after SDL_Init so that we hold the system/root
++    // credentials when creating the EGL window surface. This grants us the
++    // necessary permission to initialize the compositor canvas, avoiding the
++    // 0x80aa000b (SCE_SYSCORE_ERROR_PERMISSION) error.
++    ps4MountData();
++
++    // Create the early bootstrap window at the resolution the engine will use
++    // (from fallout2.cfg), NOT a hardcoded 640x480. _GNW95_init_window's guard
++    // keeps whatever surface exists first, so if this is 640x480 but the config
++    // is widescreen the engine renders into a 640x480 surface -> clipped UI / 4:3.
++    // Mirror _GNW95_init_mode_ex's scale handling so the size matches exactly and
++    // the engine's later call is a no-op on an already-correct window.
++    int ps4ResX, ps4ResY, ps4Scale;
++    ps4ReadDisplayConfig(&ps4ResX, &ps4ResY, &ps4Scale);
++
++    // Load user-tunable gamepad settings (touch sensitivity, deadzones, etc.).
++    ps4ReadControlsConfig();
++
++    if (!ps4ConfigurePigletForEgl(ps4ResX, ps4ResY)) {
++        ps4Log("[ps4] Piglet EGL configuration FAILED\n");
++        return EXIT_FAILURE;
++    }
++
++    int ps4WinW = ps4ResX;
++    int ps4WinH = ps4ResY;
++    int ps4WinScale = ps4Scale;
++    if (ps4WinW / ps4WinScale < 640 || ps4WinH / ps4WinScale < 480) {
++        ps4WinScale = 1;
++    } else {
++        ps4WinW /= ps4WinScale;
++        ps4WinH /= ps4WinScale;
++    }
++
++    if (_GNW95_init_window(ps4WinW, ps4WinH, true, ps4WinScale) == -1) {
++        ps4Log("[ps4] early SDL window bootstrap FAILED: %s\n", SDL_GetError());
++        return EXIT_FAILURE;
++    }
++    ps4Log("[ps4] early SDL window bootstrap ok (%dx%d scale=%d)\n", ps4WinW, ps4WinH, ps4WinScale);
++#endif
++
+     gProgramIsActive = true;
+ #ifdef FALLOUT_MAPPER
+     rc = mapper_main(argc, argv);
+ #else
++#ifdef __PS4__
++    ps4Log("[ps4] entering falloutMain\n");
++#endif
+     rc = falloutMain(argc, argv);
++#ifdef __PS4__
++    ps4Log("[ps4] falloutMain returned %d\n", rc);
++#endif
+ #endif
+ 
+ #if _WIN32

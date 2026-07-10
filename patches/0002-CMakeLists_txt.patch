@@ -1,0 +1,54 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b9f368a..88b9f35 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -362,6 +362,9 @@ if(IOS)
+     )
+ endif()
+ 
++# PS4 sources / symbol wraps / patched link.x moved to os/ps4/ps4.cmake (overlay),
++# included below — keeps this file's PS4 footprint to bare include() hooks.
++
+ if(WIN32)
+     target_compile_definitions(${EXECUTABLE_NAME} PUBLIC
+         _CRT_SECURE_NO_WARNINGS
+@@ -452,7 +455,11 @@ if(APPLE)
+     set(MACOSX_BUNDLE_BUNDLE_VERSION "1.3.0")
+ endif()
+ 
+-if((NOT ${CMAKE_SYSTEM_NAME} MATCHES "Emscripten"))
++if(PS4)
++    # OpenOrbis portlibs ship SDL2 + zlib prebuilt. Pull flags from the
++    # toolchain's sdl2-config / pkg-config instead of vendoring.
++    include("os/ps4/ps4.cmake")
++elseif((NOT ${CMAKE_SYSTEM_NAME} MATCHES "Emscripten"))
+     if(FALLOUT_VENDORED)
+         add_subdirectory("third_party/zlib")
+         add_subdirectory("third_party/sdl2")
+@@ -518,7 +525,16 @@ target_link_libraries(${EXECUTABLE_NAME} ${SDL2_LIBRARIES})
+ target_link_libraries(${EXECUTABLE_NAME} ${SDL2_MAIN_LIBRARIES})
+ target_include_directories(${EXECUTABLE_NAME} PRIVATE ${SDL2_INCLUDE_DIRS})
+ 
+-if((NOT ANDROID) AND (NOT IOS) AND (NOT CMAKE_SYSTEM_NAME MATCHES "Emscripten"))
++if(PS4)
++    # libjbc (sandbox escape) + the Sce system modules SDL2 and the escape code
++    # depend on. ps4PlatformInit() calls into libjbc from main().
++    target_link_libraries(${EXECUTABLE_NAME} ${PS4_SYSTEM_LIBRARIES})
++
++    # eboot.bin -> fself -> fpkg. Provides the "fallout2-ce_pkg" target.
++    include("os/ps4/packaging.cmake")
++endif()
++
++if((NOT ANDROID) AND (NOT IOS) AND (NOT PS4) AND (NOT CMAKE_SYSTEM_NAME MATCHES "Emscripten"))
+     add_executable(ce-dat-tool
+         "tools/dat_tool.cc"
+         "tools/dat_archive.cc"
+@@ -604,7 +620,7 @@ if((NOT ANDROID) AND (NOT IOS) AND (NOT CMAKE_SYSTEM_NAME MATCHES "Emscripten"))
+     endif()
+ endif()
+ 
+-if((NOT ANDROID) AND (NOT IOS) AND (NOT CMAKE_SYSTEM_NAME MATCHES "Emscripten"))
++if((NOT ANDROID) AND (NOT IOS) AND (NOT PS4) AND (NOT CMAKE_SYSTEM_NAME MATCHES "Emscripten"))
+     if(WIN32)
+         add_executable(mapper-ce WIN32)
+     else()

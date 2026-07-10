@@ -1,0 +1,71 @@
+diff --git a/src/display_monitor.cc b/src/display_monitor.cc
+index 6b5c2b4..1727b29 100644
+--- a/src/display_monitor.cc
++++ b/src/display_monitor.cc
+@@ -95,7 +95,16 @@ static int _disp_start;
+ // 0x56FB58 lastTime
+ static unsigned int gDisplayMonitorLastBeepTimestamp;
+ 
+-static std::ofstream gConsoleFileStream;
++// Lazily-constructed to avoid the static-initialization-order fiasco: a
++// file-scope std::ofstream runs its constructor before main(), and on some libc++
++// targets (notably PS4/OpenOrbis) that touches the not-yet-initialized iostream
++// locale machinery and faults. A function-local static is constructed on first
++// use instead, after the runtime is fully up.
++static std::ofstream& consoleFileStream()
++{
++    static std::ofstream stream;
++    return stream;
++}
+ static int gConsoleFilePrintCount = 0;
+ 
+ // 0x431610 display_init
+@@ -442,29 +451,29 @@ static void consoleFileInit()
+ {
+     const std::string& consolePath = settings.debug.console_output_path;
+     if (!consolePath.empty()) {
+-        gConsoleFileStream.open(consolePath);
++        consoleFileStream().open(consolePath);
+     }
+ }
+ 
+ static void consoleFileReset()
+ {
+-    if (gConsoleFileStream.is_open()) {
++    if (consoleFileStream().is_open()) {
+         gConsoleFilePrintCount = 0;
+-        gConsoleFileStream.flush();
++        consoleFileStream().flush();
+     }
+ }
+ 
+ static void consoleFileExit()
+ {
+-    if (gConsoleFileStream.is_open()) {
+-        gConsoleFileStream.close();
++    if (consoleFileStream().is_open()) {
++        consoleFileStream().close();
+     }
+ }
+ 
+ static void consoleFileAddMessage(const char* message)
+ {
+-    if (gConsoleFileStream.is_open()) {
+-        gConsoleFileStream << message << '\n';
++    if (consoleFileStream().is_open()) {
++        consoleFileStream() << message << '\n';
+ 
+         gConsoleFilePrintCount++;
+         if (gConsoleFilePrintCount >= 20) {
+@@ -475,9 +484,9 @@ static void consoleFileAddMessage(const char* message)
+ 
+ static void consoleFileFlush()
+ {
+-    if (gConsoleFileStream.is_open()) {
++    if (consoleFileStream().is_open()) {
+         gConsoleFilePrintCount = 0;
+-        gConsoleFileStream.flush();
++        consoleFileStream().flush();
+     }
+ }
+ 

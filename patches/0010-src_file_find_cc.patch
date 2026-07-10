@@ -1,0 +1,44 @@
+diff --git a/src/file_find.cc b/src/file_find.cc
+index 232f7ab..e53e6e3 100644
+--- a/src/file_find.cc
++++ b/src/file_find.cc
+@@ -1,10 +1,15 @@
+ #include "file_find.h"
+ 
+ #include <stddef.h>
++#include <stdio.h>
+ #include <string.h>
+ 
+ #include <fpattern/fpattern.h>
+ 
++#ifdef __PS4__
++#include "platform/ps4/ps4.h"
++#endif
++
+ namespace fallout {
+ 
+ // 0x4E6380 xsys_findfirst
+@@ -30,6 +35,23 @@ bool fileFindFirst(const char* path, DirectoryFileFindData* findData)
+ 
+     char basePath[COMPAT_MAX_PATH];
+     compat_makepath(basePath, drive, dir, nullptr, nullptr);
++
++#ifdef __PS4__
++    // getcwd() returns NULL after the cred jailbreak, so opendir() on a relative
++    // base (e.g. "MAPS/" from enumerating "MAPS\*.SAV") fails and every directory
++    // enumeration comes back empty — which breaks save games (the map-file scan in
++    // _GameMap2Slot returns 0 entries). compat_fopen/mkdir already prepend the
++    // absolute data root; do the same here so opendir() gets an absolute path.
++    // The returned entry names stay relative (built by the caller from the
++    // original `dir`), so nothing downstream changes.
++    if (basePath[0] != '/') {
++        char absBasePath[COMPAT_MAX_PATH];
++        snprintf(absBasePath, sizeof(absBasePath), "%s/%s", PS4_DATA_PATH, basePath);
++        strncpy(basePath, absBasePath, sizeof(basePath) - 1);
++        basePath[sizeof(basePath) - 1] = '\0';
++    }
++#endif
++
+     compat_resolve_path(basePath);
+ 
+     findData->dir = opendir(basePath);

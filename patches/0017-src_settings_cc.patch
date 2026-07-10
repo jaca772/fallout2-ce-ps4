@@ -1,0 +1,28 @@
+diff --git a/src/settings.cc b/src/settings.cc
+index cec6995..1927106 100644
+--- a/src/settings.cc
++++ b/src/settings.cc
+@@ -269,6 +269,23 @@ bool settingsInit(bool isMapper, int argc, char** argv)
+         descriptor.read();
+     }
+ 
++#ifdef __PS4__
++    // On PS4 the game data and saves share one flat base: /data/fallout2 (the
++    // process cwd after the cred jailbreak). The stock config ships
++    // master_patches=data / critter_patches=data, which on desktop registers a
++    // "data" directory-xbase that bridges the save code's bare "SAVEGAME\..."
++    // opens to <patches>/SAVEGAME. That xbase does NOT register on this port, so
++    // the engine creates save dirs under /data/fallout2/data/SAVEGAME (via the
++    // patches prefix) but opens SAVE.DAT at /data/fallout2/SAVEGAME (the cwd
++    // fall-through) -> ENOENT, "Error opening save game for writing" (confirmed
++    // on-device 2026-07-07). Clearing the patches paths makes both the mkdir and
++    // the open resolve to the same /data/fallout2/SAVEGAME, which the boot
++    // write-probe proved is writable. Base game data still loads from the .dat
++    // archives (opened independently of these paths).
++    settings.system.master_patches_path.clear();
++    settings.system.critter_patches_path.clear();
++#endif
++
+     return true;
+ }
+ 

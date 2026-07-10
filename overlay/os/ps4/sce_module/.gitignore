@@ -1,0 +1,5 @@
+# Proprietary Sony system modules — user-supplied, never committed.
+# See README.md.
+libScePigletv2VSH.sprx
+libSceShaccVSH.sprx
+*.sprx

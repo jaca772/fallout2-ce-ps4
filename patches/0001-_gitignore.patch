@@ -1,0 +1,18 @@
+diff --git a/.gitignore b/.gitignore
+index 4ea7e23..abff405 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -396,6 +396,13 @@ FodyWeavers.xsd
+ # CMake
+ /out
+ /build
++/build-ps4
++/build-ps4-console
++
++# PS4 build artifacts & local scratch (never commit — large binaries / temp)
++/serve-pkg
++/scratchpad
++*.pkg
+ 
+ # versioning header
+ src/platform/git_version.h

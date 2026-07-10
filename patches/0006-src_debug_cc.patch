@@ -1,0 +1,31 @@
+diff --git a/src/debug.cc b/src/debug.cc
+index 85c6fed..dbc54d0 100644
+--- a/src/debug.cc
++++ b/src/debug.cc
+@@ -11,6 +11,10 @@
+ #include "platform_compat.h"
+ #include "window_manager_private.h"
+ 
++#ifdef __PS4__
++#include "platform/ps4/ps4.h"
++#endif
++
+ namespace fallout {
+ 
+ static int _debug_puts(char* string);
+@@ -188,6 +192,15 @@ int debugPrint(const char* format, ...)
+     SDL_Log("%s", string);
+ #endif
+ 
++#ifdef __PS4__
++    // Release builds compile out the SDL_Log above (NDEBUG), so every
++    // debugPrint("Failed on X") diagnostic in gameInitWithOptions() etc. was
++    // silently swallowed (no debug-mode proc is configured either, so it just
++    // sat in an in-memory buffer). Force it to klog unconditionally — this is
++    // the exact channel the engine already uses to report init failures.
++    fallout::ps4Log("%s", string);
++#endif
++
+     return rc;
+ }
+ 

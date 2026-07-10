@@ -1,0 +1,40 @@
+diff --git a/src/audio_engine.cc b/src/audio_engine.cc
+index 849f2cf..7eeb083 100644
+--- a/src/audio_engine.cc
++++ b/src/audio_engine.cc
+@@ -97,6 +97,16 @@ static void audioEngineMixin(void* userData, Uint8* stream, int length)
+ 
+ bool audioEngineInit()
+ {
++#ifdef __PS4__
++    // AUDIO is intentionally left out of the initial SDL_Init on PS4 (see
++    // win32.cc: mbus 8-client cap). Bring the audio subsystem up here instead,
++    // once video is running. If the mbus cap is still hit, this fails and the
++    // game continues without sound rather than crashing.
++    if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
++        return false;
++    }
++#endif
++
+     SDL_AudioSpec desiredSpec;
+     // Request 44.1 kHz output so 44.1 kHz ACM music can play without being
+     // downsampled by the mixer on the common path.
+@@ -120,8 +130,18 @@ bool audioEngineInit()
+ void audioEngineExit()
+ {
+     if (audioEngineIsInitialized()) {
++#ifdef __PS4__
++        // The SDL-PS4 audio backend's PS4AUD_CloseDevice calls abort() while
++        // closing the device — this crashed "Exit Game" (confirmed via on-device
++        // backtrace: abort <- PS4AUD_CloseDevice <- SDL close_audio_device <-
++        // audioEngineExit). audioEngineExit only runs at process shutdown
++        // (gameExit -> gameSoundExit -> soundExit), so skip SDL_CloseAudioDevice
++        // entirely and let the OS reclaim the audio device when the process ends.
++        gAudioEngineDeviceId = -1;
++#else
+         SDL_CloseAudioDevice(gAudioEngineDeviceId);
+         gAudioEngineDeviceId = -1;
++#endif
+     }
+ }
+ 

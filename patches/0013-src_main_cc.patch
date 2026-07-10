@@ -1,0 +1,25 @@
+diff --git a/src/main.cc b/src/main.cc
+index 0381a2f..71f7eec 100644
+--- a/src/main.cc
++++ b/src/main.cc
+@@ -13,6 +13,7 @@
+ #include "cycle.h"
+ #include "db.h"
+ #include "debug.h"
++#include "dinput.h"
+ #include "draw.h"
+ #include "endgame.h"
+ #include "game.h"
+@@ -384,6 +385,12 @@ static void mainLoop()
+ 
+         int keyCode = inputGetInput();
+ 
++#ifdef __PS4__
++        // Phase B: left-stick direct character movement + camera follow in the
++        // exploration view. No-op in combat/menus (falls back to cursor).
++        ps4GamepadWorldMove();
++#endif
++
+         // SFALL: MainLoopHook.
+         sfall_gl_scr_process_main();
+ 

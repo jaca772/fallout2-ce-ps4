@@ -1,0 +1,103 @@
+diff --git a/src/dinput.cc b/src/dinput.cc
+index 300ab70..6de0594 100644
+--- a/src/dinput.cc
++++ b/src/dinput.cc
+@@ -2,9 +2,16 @@
+ 
+ #include "sfall_kb_helpers.h"
+ #include "svga.h"
++#include "input.h"
++#include "kb.h"
++
++#ifdef __PS4__
++#include "platform/ps4/ps4_gamepad.h"
++#endif
+ 
+ namespace fallout {
+ 
++
+ static int gMouseWheelDeltaX = 0;
+ static int gMouseWheelDeltaY = 0;
+ static int mouseWindowMappingWindowWidth = 0;
+@@ -53,6 +60,14 @@ bool mouseDeviceInitMode()
+     // "Absolute mode" means cursor position is controlled by the OS, and we read it directly.
+     // Mouse sensitivity settings can only apply in relative mode.
+ 
++#ifdef __PS4__
++    // PS4 doesn't support relative mouse mode in SDL, or might fail if no mouse
++    // is connected. Force absolute mode.
++    SDL_SetRelativeMouseMode(SDL_FALSE);
++    mouseRelativeMode = false;
++    mouseDeviceRefreshWindowMapping();
++    return true;
++#else
+     // TODO: add setting for mouse capture (relative mode) in windowed, differentiated from the web version.
+     bool wantsRelativeMode = screenIsFullscreen();
+ 
+@@ -68,6 +83,7 @@ bool mouseDeviceInitMode()
+     mouseRelativeMode = false;
+     mouseDeviceRefreshWindowMapping();
+     return true;
++#endif
+ }
+ 
+ // 0x4E04E8
+@@ -92,14 +108,30 @@ bool mouseDeviceGetData(MouseData* mouseState)
+     // TODO: Move mouse events processing into `GNW95_process_message` and
+     // update mouse position manually.
+     SDL_PumpEvents();
++
++#ifdef __PS4__
++    ps4GamepadPoll(&gMouseWheelDeltaX, &gMouseWheelDeltaY);
++#endif
++
+     Uint32 buttons = mouseDeviceUsesRelativeMode()
+         ? SDL_GetRelativeMouseState(&(mouseState->x), &(mouseState->y))
+         : SDL_GetMouseState(&(mouseState->x), &(mouseState->y));
+     if (!mouseDeviceUsesRelativeMode()) {
+         mouseDeviceMapWindowToLogicalPosition(&(mouseState->x), &(mouseState->y));
+     }
++
++#ifdef __PS4__
++    if (ps4GamepadIsOpen()) {
++        ps4GamepadFillMouse(mouseState);
++    } else {
++        mouseState->buttons[0] = (buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
++        mouseState->buttons[1] = (buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
++    }
++#else
+     mouseState->buttons[0] = (buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+     mouseState->buttons[1] = (buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
++#endif
++
+     mouseState->wheelX = gMouseWheelDeltaX;
+     mouseState->wheelY = gMouseWheelDeltaY;
+ 
+@@ -109,6 +141,8 @@ bool mouseDeviceGetData(MouseData* mouseState)
+     return true;
+ }
+ 
++
++
+ // 0x4E05A8
+ bool keyboardDeviceAcquire()
+ {
+@@ -139,12 +173,18 @@ bool keyboardDeviceGetData(KeyboardData* keyboardData)
+ bool mouseDeviceInit()
+ {
+     mouseDeviceRefreshWindowMapping();
++#ifdef __PS4__
++    ps4GamepadOpen();
++#endif
+     return mouseDeviceInitMode();
+ }
+ 
+ // 0x4E078C
+ void mouseDeviceFree()
+ {
++#ifdef __PS4__
++    ps4GamepadClose();
++#endif
+ }
+ 
+ // 0x4E07B8

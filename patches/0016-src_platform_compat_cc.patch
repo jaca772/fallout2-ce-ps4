@@ -1,0 +1,169 @@
+diff --git a/src/platform_compat.cc b/src/platform_compat.cc
+index b33ccd5..7401841 100644
+--- a/src/platform_compat.cc
++++ b/src/platform_compat.cc
+@@ -10,6 +10,7 @@
+ #include <sys/stat.h>
+ #else
+ #include <dirent.h>
++#include <errno.h>
+ #include <sys/stat.h>
+ #include <unistd.h>
+ #endif
+@@ -36,8 +37,21 @@ static bool compatIsPathSeparator(char ch)
+ 
+ static void compat_prepare_native_path(char* nativePath, const char* path)
+ {
++#ifdef __PS4__
++    // On PS4 we jailbreak to prison0 to access /data/fallout2. However, the cred
++    // swap breaks getcwd() (returns NULL / EINVAL), which in turn breaks the
++    // toolchain libc's relative path resolution in fopen/open/opendir.
++    // Prepend the absolute base path to all relative paths to bypass this.
++    if (path[0] != '/' && path[0] != '\0') {
++        snprintf(nativePath, COMPAT_MAX_PATH, "/data/fallout2/%s", path);
++    } else {
++        strncpy(nativePath, path, COMPAT_MAX_PATH - 1);
++        nativePath[COMPAT_MAX_PATH - 1] = '\0';
++    }
++#else
+     strncpy(nativePath, path, COMPAT_MAX_PATH - 1);
+     nativePath[COMPAT_MAX_PATH - 1] = '\0';
++#endif
+     compat_windows_path_to_native(nativePath);
+     compat_resolve_path(nativePath);
+ }
+@@ -244,13 +258,19 @@ int compat_mkdir_recursive(const char* path)
+         if (*sep == '\\' || *sep == '/') {
+             char saved = *sep;
+             *sep = '\0';
+-            if (compat_mkdir(pathCopy) < 0) {
+-                break;
++            int rc = compat_mkdir(pathCopy);
++            // Continue even if the directory already exists (EEXIST).
++            // Only stop on a real error (e.g. permission denied).
++            if (rc < 0 && errno != EEXIST) {
++                *sep = saved;
++                return rc;
+             }
+             *sep = saved;
+         }
+     }
+-    return compat_mkdir(path);
++    int rc = compat_mkdir(path);
++    // Success if created or already existed.
++    return (rc < 0 && errno == EEXIST) ? 0 : rc;
+ }
+ 
+ bool compat_is_dir(const char* path)
+@@ -298,17 +318,107 @@ unsigned int compat_timeGetTime()
+ #ifdef _WIN32
+     return timeGetTime();
+ #else
+-    static auto start = std::chrono::steady_clock::now();
+-    auto now = std::chrono::steady_clock::now();
+-    return static_cast<unsigned int>(std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count());
++    return SDL_GetTicks();
+ #endif
+ }
+ 
++#ifdef __PS4__
++// PS4's filesystem is case-sensitive, but Fallout 2's data mixes case (the engine
++// asks for `data\sound\music\...` while a real install may hold `SOUND`/`Sound`).
++// Resolve `path` (absolute) against the real on-disk names, matching each
++// component case-insensitively via a directory scan. Fills `out` and returns true
++// on a full match; false otherwise. Exact components hit the fast access() path,
++// so this only scans where the case actually differs. Removes the old manual
++// "rename sound to uppercase" step — any casing now just works.
++static bool ps4ResolveCaseInsensitive(const char* path, char* out, size_t outSize)
++{
++    if (path == nullptr || path[0] != '/') {
++        return false;
++    }
++
++    char resolved[COMPAT_MAX_PATH];
++    resolved[0] = '/';
++    resolved[1] = '\0';
++    size_t rlen = 1; // length of `resolved` ("/" => 1)
++    const char* p = path + 1;
++
++    while (*p != '\0') {
++        const char* slash = strchr(p, '/');
++        size_t complen = slash != nullptr ? (size_t)(slash - p) : strlen(p);
++        if (complen == 0) { // collapse "//"
++            p = (slash != nullptr) ? slash + 1 : p + complen;
++            continue;
++        }
++        if (complen >= 256 || rlen + 1 + complen >= sizeof(resolved)) {
++            return false;
++        }
++
++        char comp[256];
++        memcpy(comp, p, complen);
++        comp[complen] = '\0';
++
++        char candidate[COMPAT_MAX_PATH];
++        if (rlen == 1) {
++            snprintf(candidate, sizeof(candidate), "/%s", comp);
++        } else {
++            snprintf(candidate, sizeof(candidate), "%s/%s", resolved, comp);
++        }
++
++        if (access(candidate, F_OK) == 0) {
++            strcpy(resolved, candidate);
++        } else {
++            DIR* dir = opendir(resolved);
++            if (dir == nullptr) {
++                return false;
++            }
++            bool found = false;
++            struct dirent* entry;
++            while ((entry = readdir(dir)) != nullptr) {
++                if (SDL_strcasecmp(entry->d_name, comp) == 0) {
++                    if (rlen == 1) {
++                        snprintf(candidate, sizeof(candidate), "/%s", entry->d_name);
++                    } else {
++                        snprintf(candidate, sizeof(candidate), "%s/%s", resolved, entry->d_name);
++                    }
++                    found = true;
++                    break;
++                }
++            }
++            closedir(dir);
++            if (!found) {
++                return false;
++            }
++            strcpy(resolved, candidate);
++        }
++        rlen = strlen(resolved);
++
++        if (slash == nullptr) {
++            break;
++        }
++        p = slash + 1;
++    }
++
++    strncpy(out, resolved, outSize - 1);
++    out[outSize - 1] = '\0';
++    return true;
++}
++#endif
++
+ FILE* compat_fopen(const char* path, const char* mode)
+ {
+     char nativePath[COMPAT_MAX_PATH];
+     compat_prepare_native_path(nativePath, path);
+-    return fopen(nativePath, mode);
++    FILE* f = fopen(nativePath, mode);
++#ifdef __PS4__
++    // Case-insensitive retry on a read miss (see ps4ResolveCaseInsensitive).
++    if (f == nullptr && strchr(mode, 'r') != nullptr) {
++        char resolved[COMPAT_MAX_PATH];
++        if (ps4ResolveCaseInsensitive(nativePath, resolved, sizeof(resolved))) {
++            f = fopen(resolved, mode);
++        }
++    }
++#endif
++    return f;
+ }
+ 
+ gzFile compat_gzopen(const char* path, const char* mode)

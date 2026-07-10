@@ -1,0 +1,25 @@
+diff --git a/src/movie_lib.cc b/src/movie_lib.cc
+index 6851141..71ce16c 100644
+--- a/src/movie_lib.cc
++++ b/src/movie_lib.cc
+@@ -612,9 +612,9 @@ static int syncWait()
+ 
+     late = 0;
+     if (sync_active) {
+-        while ((sync_time + 1000 * compat_timeGetTime()) < 0) {
++        while ((sync_time + 1000 * (int)compat_timeGetTime()) < 0) {
+             late = 1;
+-            delay_ms(-(sync_time + 1000 * compat_timeGetTime()) / 1000 - 3);
++            delay_ms(-(sync_time + 1000 * (int)compat_timeGetTime()) / 1000 - 3);
+         }
+         sync_time += sync_wait_quanta;
+     }
+@@ -868,7 +868,7 @@ static int _MVE_sndConfigure(int a1, int a2, int a3, int a4, int a5, int a6)
+ static void MVE_syncSync()
+ {
+     if (sync_active) {
+-        while (sync_time + 1000 * compat_timeGetTime() < 0) {
++        while (sync_time + 1000 * (int)compat_timeGetTime() < 0) {
+         }
+     }
+ }

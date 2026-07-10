@@ -1,0 +1,107 @@
+# PS4 overlay build — on demand ONLY (workflow_dispatch; deliberately no schedule —
+# fallout2-ce is experimental and commits daily, so builds are always manual).
+# Publish-safe / secret-free: the default (console) mode bundles no Sony modules, so
+# CI needs no proprietary files. It clones fallout2-ce, applies overlay + patches,
+# builds the pkg with the OpenOrbis toolchain (seeded once — see
+# scripts/seed-toolchain.md), and (by default) publishes it as a GitHub Release.
+name: build-ps4
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "fallout2-ce ref (blank = pinned in scripts/config.sh; 'main' = latest CE)"
+        required: false
+        default: ""
+      publish_release:
+        description: "Publish the pkg as a GitHub Release (uncheck for a test build — artifact only)"
+        type: boolean
+        required: false
+        default: true
+
+# gh release create/download need write access to the repo's Releases.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The 1.6 GB OpenOrbis toolchain lives in Actions cache, NOT in the repo.
+      - name: Restore OpenOrbis toolchain (cache)
+        id: toolchain
+        uses: actions/cache@v4
+        with:
+          path: /opt/pacbrew
+          key: openorbis-toolchain-v1
+
+      # First run / cache miss: fetch the toolchain you seeded once as a release
+      # asset (see scripts/seed-toolchain.md). gh handles private-repo auth via
+      # GITHUB_TOKEN, so there is no URL/asset-id to configure — just the tag.
+      - name: Fetch OpenOrbis toolchain
+        if: steps.toolchain.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOOLCHAIN_TAG: ${{ vars.TOOLCHAIN_TAG || 'toolchain-v1' }}
+        run: |
+          set -euxo pipefail
+          gh release download "$TOOLCHAIN_TAG" -R "$GITHUB_REPOSITORY" \
+             -p 'openorbis-toolchain.tar.gz' -O /tmp/toolchain.tar.gz
+          sudo mkdir -p /opt/pacbrew
+          sudo tar -xzf /tmp/toolchain.tar.gz -C /opt/pacbrew
+
+      - name: Build pkg
+        run: |
+          set -euxo pipefail
+          source /opt/pacbrew/ps4/openorbis/ps4vars.sh
+          if [ -n "${{ github.event.inputs.upstream_ref }}" ]; then
+            export UPSTREAM_REF='${{ github.event.inputs.upstream_ref }}'
+          fi
+          bash scripts/build.sh
+
+      - name: Upload pkg
+        uses: actions/upload-artifact@v4
+        with:
+          name: fallout2-ce-ps4-pkg
+          path: |
+            *.pkg
+            build-manifest.txt
+          if-no-files-found: error
+
+      # Publish the pkg as a GitHub Release (one per manual run; the newest is
+      # always on top). Traceable: the tag/title carry the exact CE commit built.
+      # Skipped when publish_release is unchecked (test build -> artifact only).
+      - name: Publish Release
+        if: ${{ inputs.publish_release }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          commit=$(sed -n 's/^upstream_commit=//p' build-manifest.txt)
+          date=$(sed -n 's/^upstream_date=//p' build-manifest.txt)
+          short=${commit:0:12}
+          ref='${{ github.event.inputs.upstream_ref }}'
+          [ -n "$ref" ] || ref='pinned (scripts/config.sh)'
+          tag="build-${{ github.run_number }}"
+
+          # Idempotent on re-runs: drop a same-tag release/tag if one exists.
+          gh release delete "$tag" --cleanup-tag --yes || true
+
+          notes=$(cat <<EOF
+          PS4 pkg built from **fallout2-ce @ \`$short\`** ($date).
+          Requested ref: \`$ref\`.
+
+          **On the console you still supply** the game data and the two GLES modules
+          (\`libScePigletv2VSH.sprx\`, \`libSceShaccVSH.sprx\`) — this pkg bundles no
+          Sony modules. See the README for the full setup.
+
+          Asset: \`IV0001-FALL20002_00-FALL200020100000.pkg\`.
+          EOF
+          )
+
+          gh release create "$tag" \
+            --title "PS4 pkg — CE @ $short (build #${{ github.run_number }})" \
+            --notes "$notes" \
+            *.pkg build-manifest.txt
