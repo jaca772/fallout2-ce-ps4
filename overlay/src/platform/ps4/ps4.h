@@ -112,6 +112,9 @@ struct Ps4ControlsConfig {
     int autoAimWholeMap;
     int autoAimCenterCamera; // 1 = pan the camera to centre the aimed target
     int meleeApproach;       // PS4_MELEE_* : out-of-range melee -> run up (+ attack)
+    int lootAssist;          // 1 = L2+L1 snaps onto containers/corpses/doors
+    int lootSnapDistance;    // loot-assist reach in hexes
+    int lootSkipEmpty;       // 1 = skip empty containers/corpses when cycling
 };
 
 extern Ps4ControlsConfig g_ps4Controls;

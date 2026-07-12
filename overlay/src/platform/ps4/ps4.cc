@@ -386,6 +386,9 @@ Ps4ControlsConfig g_ps4Controls = {
     /* autoAimWholeMap */ 0,
     /* autoAimCenterCamera */ 0,
     /* meleeApproach */ PS4_MELEE_APPROACH,
+    /* lootAssist */ 1,
+    /* lootSnapDistance */ 20,
+    /* lootSkipEmpty */ 1,
 };
 
 // Map an action name to a PS4_ACT_* value (-1 = unknown, keep current).
@@ -516,6 +519,14 @@ static void ps4WriteDefaultControlsConfig(const char* path)
         "#  1 = run up to the target but DON'T swing (default)\n"
         "#  2 = run up and then attack\n"
         "melee_approach=%d\n"
+        "# Loot/interact assist: hold L2 + L1 to snap onto the nearest container,\n"
+        "#  corpse or door (works in and out of combat). D-pad L/R cycles, Cross opens\n"
+        "#  it (loot / open-close a door). With a Skilldex skill active (e.g. Lockpick)\n"
+        "#  Cross applies that skill to the snapped target.\n"
+        "#  loot_snap_distance = reach in hexes; loot_skip_empty = 1 skips empty ones.\n"
+        "loot_assist=%d\n"
+        "loot_snap_distance=%d\n"
+        "loot_skip_empty=%d\n"
         "\n"
         "# Advanced feel tuning:\n"
         "#  walk_project_tiles = hexes projected per walk step (higher = smoother, less responsive)\n"
@@ -564,6 +575,7 @@ static void ps4WriteDefaultControlsConfig(const char* path)
         g_ps4Controls.combatAutoAim, g_ps4Controls.worldAutoAim,
         g_ps4Controls.autoAimWholeMap, g_ps4Controls.autoAimCenterCamera,
         g_ps4Controls.meleeApproach,
+        g_ps4Controls.lootAssist, g_ps4Controls.lootSnapDistance, g_ps4Controls.lootSkipEmpty,
         g_ps4Controls.walkProjectTiles, g_ps4Controls.runSettleMs,
         g_ps4Controls.touchMaxGain, g_ps4Controls.touchTapMs,
         g_ps4Controls.touchTapMove, g_ps4Controls.dpadRepeatMs,
@@ -603,6 +615,9 @@ void ps4ReadControlsConfig()
         else if (sscanf(line, "auto_aim_whole_map=%d", &iv) == 1) g_ps4Controls.autoAimWholeMap = iv;
         else if (sscanf(line, "auto_aim_center_camera=%d", &iv) == 1) g_ps4Controls.autoAimCenterCamera = iv;
         else if (sscanf(line, "melee_approach=%d", &iv) == 1) g_ps4Controls.meleeApproach = iv;
+        else if (sscanf(line, "loot_assist=%d", &iv) == 1) g_ps4Controls.lootAssist = iv;
+        else if (sscanf(line, "loot_snap_distance=%d", &iv) == 1) g_ps4Controls.lootSnapDistance = iv;
+        else if (sscanf(line, "loot_skip_empty=%d", &iv) == 1) g_ps4Controls.lootSkipEmpty = iv;
         else if (sscanf(line, "touch_sensitivity=%f", &fv) == 1) g_ps4Controls.touchSensitivity = fv;
         else if (sscanf(line, "touch_accel=%f", &fv) == 1) g_ps4Controls.touchAccel = fv;
         else if (sscanf(line, "touch_smoothing=%f", &fv) == 1) g_ps4Controls.touchSmoothing = fv;

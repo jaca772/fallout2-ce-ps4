@@ -1,8 +1,8 @@
 diff --git a/.gitignore b/.gitignore
-index 4ea7e23..abff405 100644
+index 4ea7e23..ebed9cb 100644
 --- a/.gitignore
 +++ b/.gitignore
-@@ -396,6 +396,13 @@ FodyWeavers.xsd
+@@ -396,6 +396,18 @@ FodyWeavers.xsd
  # CMake
  /out
  /build
@@ -13,6 +13,11 @@ index 4ea7e23..abff405 100644
 +/serve-pkg
 +/scratchpad
 +*.pkg
++
++# Optional custom app icon (your own artwork): if a root-level icon0.png is present
++# the build uses it instead of the placeholder (os/ps4/packaging.cmake). Kept out of
++# the repo so no non-free graphic is committed.
++/icon0.png
  
  # versioning header
  src/platform/git_version.h

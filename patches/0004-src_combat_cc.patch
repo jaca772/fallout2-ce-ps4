@@ -1,5 +1,5 @@
 diff --git a/src/combat.cc b/src/combat.cc
-index c1f2862..5d3593e 100644
+index c1f2862..b6f75e2 100644
 --- a/src/combat.cc
 +++ b/src/combat.cc
 @@ -1928,6 +1928,12 @@ static Object* gCalledShotCritter;
@@ -33,7 +33,7 @@ index c1f2862..5d3593e 100644
      if (eventCode == KEY_ESCAPE) {
          return -1;
      }
-@@ -5891,6 +5901,258 @@ void _combat_attack_this(Object* target)
+@@ -5891,6 +5901,348 @@ void _combat_attack_this(Object* target)
      }
  }
  
@@ -141,6 +141,96 @@ index c1f2862..5d3593e 100644
 +
 +    if (freeList && listLen != 0) {
 +        objectListFree(list);
++    }
++
++    // Insertion sort by distance to the player (nearest first).
++    for (int i = 1; i < count; i++) {
++        Object* key = out[i];
++        int keyDist = objectGetDistanceBetween(gDude, key);
++        int j = i - 1;
++        while (j >= 0 && objectGetDistanceBetween(gDude, out[j]) > keyDist) {
++            out[j + 1] = out[j];
++            j--;
++        }
++        out[j + 1] = key;
++    }
++
++    return count;
++}
++
++// PS4 gamepad loot/interact assist: fill `out` (up to maxCount) with nearby
++// interactable objects — containers, corpses (dead critters) and doors — within
++// `maxTiles` of the dude, nearest-first. When `skipEmpty`, containers/corpses that
++// hold nothing are omitted (doors are always listed). Mirrors
++// combatGamepadListTargets, but for opening/looting rather than attacking, so it is
++// range-capped by a config distance and does not require a clear line of fire.
++int gamepadListInteractables(Object** out, int maxCount, bool wholeMap, int maxTiles, bool skipEmpty)
++{
++    if (out == nullptr || maxCount <= 0 || gDude == nullptr) {
++        return 0;
++    }
++    if (maxTiles < 1) {
++        maxTiles = 1;
++    }
++
++    int logicalW = screenGetWidth();
++    int visibleH = screenGetVisibleHeight();
++    int count = 0;
++
++    static const int kTypes[] = { OBJ_TYPE_ITEM, OBJ_TYPE_CRITTER, OBJ_TYPE_SCENERY };
++    for (int t = 0; t < 3 && count < maxCount; t++) {
++        Object** list;
++        int listLen = objectListCreate(-1, gElevation, kTypes[t], &list);
++        for (int i = 0; i < listLen && count < maxCount; i++) {
++            Object* o = list[i];
++            if (o == nullptr || o == gDude) {
++                continue;
++            }
++            if ((o->flags & OBJECT_HIDDEN) != 0) {
++                continue;
++            }
++
++            bool keep = false;
++            switch (kTypes[t]) {
++            case OBJ_TYPE_ITEM:
++                if (itemGetType(o) == ITEM_TYPE_CONTAINER) {
++                    keep = !(skipEmpty && o->data.inventory.length == 0);
++                }
++                break;
++            case OBJ_TYPE_CRITTER:
++                if ((o->data.critter.combat.results & DAM_DEAD) != 0) {
++                    keep = !(skipEmpty && o->data.inventory.length == 0);
++                }
++                break;
++            case OBJ_TYPE_SCENERY: {
++                Proto* proto;
++                if (protoGetProto(o->pid, &proto) != -1 && proto->scenery.type == SCENERY_TYPE_DOOR) {
++                    keep = true;
++                }
++                break;
++            }
++            }
++            if (!keep) {
++                continue;
++            }
++
++            if (objectGetDistanceBetween(gDude, o) > maxTiles) {
++                continue;
++            }
++            if (!wholeMap) {
++                int sx, sy;
++                if (tileToScreenXY(o->tile, &sx, &sy) != 0) {
++                    continue;
++                }
++                if (sx < 0 || sx >= logicalW || sy < 0 || sy >= visibleH) {
++                    continue;
++                }
++            }
++            out[count++] = o;
++        }
++        if (listLen != 0) {
++            objectListFree(list);
++        }
 +    }
 +
 +    // Insertion sort by distance to the player (nearest first).

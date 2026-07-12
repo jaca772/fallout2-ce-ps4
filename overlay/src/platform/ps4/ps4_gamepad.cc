@@ -314,6 +314,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         // "Combat aim" engages while L2 is held during the player's combat turn.
         bool l2Held = havePadButtons && (padButtons & ORBIS_PAD_BUTTON_L2) != 0;
         bool r2Held = havePadButtons && (padButtons & ORBIS_PAD_BUTTON_R2) != 0;
+        bool l1Held = SDL_GameControllerGetButton(g_gamepad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER) != 0;
 
         // While the called-shot (VATS) body-part window is up, hand full control
         // back to the modal: aim assist must NOT hijack the cursor or the Cross
@@ -325,11 +326,17 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         // Hold L2 for aim assist. In combat it snaps onto enemies (combat_auto_aim);
         // out of combat, in the explorable world, it snaps onto people to talk to /
         // interact with (world_auto_aim). Both are gated by their config toggle.
+        // L2 + L1 = loot/interact assist: snap onto containers / corpses / doors,
+        // and Cross loots / opens (or applies an active Skilldex skill, e.g.
+        // Lockpick). Works BOTH in and out of combat, and takes priority over the
+        // L2-only aim modes while L1 is held.
+        bool lootAim = l2Held && l1Held && g_ps4Controls.lootAssist && !calledShotActive
+            && (worldWalk || (isInCombat() && GameMode::isInGameMode(GameMode::kPlayerTurn)));
         bool combatAim = l2Held && g_ps4Controls.combatAutoAim && isInCombat()
             && GameMode::isInGameMode(GameMode::kPlayerTurn)
-            && !calledShotActive;
-        bool worldAim = l2Held && g_ps4Controls.worldAutoAim && worldWalk && !isInCombat();
-        bool aimActive = combatAim || worldAim;
+            && !calledShotActive && !lootAim;
+        bool worldAim = l2Held && g_ps4Controls.worldAutoAim && worldWalk && !isInCombat() && !lootAim;
+        bool aimActive = combatAim || worldAim || lootAim;
 
         // Circle acts as a universal "close/back": whenever an in-game menu is open
         // (pipboy, inventory, char sheet, automap, skilldex, the Esc options menu,
@@ -373,6 +380,12 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
             // During combat aim, Cross is the fire button (handled below), so skip
             // its normal action here (and leave its prev-state to the aim section).
             if (combatAim && fb.button == SDL_CONTROLLER_BUTTON_A) {
+                continue;
+            }
+            // While L2 is held, L1 is the loot-assist modifier (L2+L1), not its
+            // mapped action (inventory) — consume it so it doesn't also fire.
+            if (g_ps4Controls.lootAssist && l2Held && fb.button == SDL_CONTROLLER_BUTTON_LEFTSHOULDER) {
+                g_prevButtons[fb.button] = SDL_GameControllerGetButton(g_gamepad, fb.button) != 0;
                 continue;
             }
             bool held = SDL_GameControllerGetButton(g_gamepad, fb.button) != 0;
@@ -459,8 +472,20 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         // per target (on change) instead of every frame. Cleared when combat aim is
         // off, so re-engaging L2 reprints.
         static Object* s_apMsgTarget = nullptr;
-        int desiredMouseMode = combatAim ? GAME_MOUSE_MODE_CROSSHAIR
-            : (worldAim ? GAME_MOUSE_MODE_ARROW : -1);
+        int desiredMouseMode;
+        if (combatAim) {
+            desiredMouseMode = GAME_MOUSE_MODE_CROSSHAIR;
+        } else if (lootAim) {
+            // Keep an active Skilldex skill cursor (Lockpick, Steal, ...) so Cross
+            // applies the skill to the snapped target; otherwise the action (arrow)
+            // cursor, so Cross loots / opens.
+            desiredMouseMode = (gameMouseGetMode() >= FIRST_GAME_MOUSE_MODE_SKILL)
+                ? -1 : GAME_MOUSE_MODE_ARROW;
+        } else if (worldAim) {
+            desiredMouseMode = GAME_MOUSE_MODE_ARROW;
+        } else {
+            desiredMouseMode = -1;
+        }
 
         // Restore the saved mode whenever we're not forcing an aim cursor (L2
         // release / not in an aimable context).
@@ -472,10 +497,25 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
             s_apMsgTarget = nullptr;
         }
 
+        // Loot-assist and target-aim draw from different candidate sets, so toggling
+        // L1 (while L2 is held) must re-freeze — otherwise a stale combat target
+        // would be pruned against the interactables list. Pick the source per mode.
+        static bool s_aimWasLoot = false;
+        if (lootAim != s_aimWasLoot) {
+            s_aimEngaged = false;
+        }
+        s_aimWasLoot = lootAim;
+        auto buildAimList = [&](Object** buf, int max, bool whole) -> int {
+            return lootAim
+                ? gamepadListInteractables(buf, max, whole,
+                      g_ps4Controls.lootSnapDistance, g_ps4Controls.lootSkipEmpty != 0)
+                : combatGamepadListTargets(buf, max, whole);
+        };
+
         if (aimActive) {
             if (!s_aimEngaged) {
                 // Engage: freeze the current viewport (or whole-map) target set.
-                s_aimCount = combatGamepadListTargets(s_aimList, 16, g_ps4Controls.autoAimWholeMap != 0);
+                s_aimCount = buildAimList(s_aimList, 16, g_ps4Controls.autoAimWholeMap != 0);
                 s_aimSelected = (s_aimCount > 0) ? s_aimList[0] : nullptr;
                 s_aimEngaged = (s_aimCount > 0);
             } else {
@@ -484,7 +524,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
                 // whole-map list so panning doesn't drop off-screen frozen targets
                 // and a stale pointer is never dereferenced.
                 Object* live[64];
-                int nLive = combatGamepadListTargets(live, 64, true);
+                int nLive = buildAimList(live, 64, true);
                 int w = 0;
                 for (int i = 0; i < s_aimCount; i++) {
                     for (int j = 0; j < nLive; j++) {

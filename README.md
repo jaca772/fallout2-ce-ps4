@@ -126,9 +126,10 @@ persist across pkg reinstalls.
 | **Circle ◯** | Right click (cycle cursor mode) — *and closes any open menu* |
 | **Square ▢** | Skilldex |
 | **Triangle △** | Character sheet |
-| **L1** | Inventory |
+| **L1** | Inventory — *(with L2 held: loot/interact assist modifier)* |
 | **R1** | Reload the active weapon |
 | **L2 (hold)** | **Aim assist** — combat: lock onto enemies; out of combat: onto people to talk to / interact |
+| **L1 (with L2)** | **Loot / interact assist** — snap onto containers / corpses / doors (in & out of combat); ✕ loots / opens / applies an active skill |
 | **R2 (with L2)** | Held during L2+✕ → **aimed / called shot (VATS)** |
 | **L3 (left stick click)** | Switch to the other equipped weapon |
 | **R3 (right stick click)** | Combat: start a fight / end turn — or end the fight when no enemy still wants to attack |
@@ -148,6 +149,13 @@ persist across pkg reinstalls.
   would; whether it also swings on arrival is the `melee_approach` setting below.
 - **Out of combat:** the cursor snaps to the nearest person with the *talk/look/use*
   action cursor; **✕** interacts (e.g. starts dialog).
+- **Loot / interact assist — hold L2 + L1:** snap onto the nearest **container,
+  corpse or door** (works **in and out of combat**). **D-pad ←/→** cycles them, **✕**
+  acts: loot a container/corpse, open/close a door. With a **Skilldex skill active**
+  (e.g. Lockpick, Steal) **✕** applies that skill to the snapped target — so
+  lockpicking a door is just: pick Lockpick in Skilldex → hold **L2 + L1** → ✕. While
+  L2 is held, **L1 is this modifier**, not its usual action (inventory). Tunable via
+  `loot_assist` / `loot_snap_distance` / `loot_skip_empty` below.
 - The target set is **frozen** while L2 is held (D-pad only cycles what was in view
   when you pressed L2). Release and re-press L2 to re-scan.
 
@@ -227,6 +235,9 @@ melee_approach         = 1    # ✕ on an out-of-reach melee/unarmed target:
                               #   0 = off (engine "out of range")
                               #   1 = run up to it but DON'T swing (default)
                               #   2 = run up and then attack
+loot_assist            = 1    # 1 = L2+L1 snaps onto containers/corpses/doors (0 = off)
+loot_snap_distance     = 20   # loot-assist reach, in hexes
+loot_skip_empty        = 1    # 1 = skip empty containers/corpses when cycling
 ```
 
 ### Cursor & touchpad feel

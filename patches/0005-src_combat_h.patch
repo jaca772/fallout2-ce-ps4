@@ -1,8 +1,8 @@
 diff --git a/src/combat.h b/src/combat.h
-index bdde123..17c0196 100644
+index bdde123..1b2ec79 100644
 --- a/src/combat.h
 +++ b/src/combat.h
-@@ -49,6 +49,14 @@ void _combat_anim_finished();
+@@ -49,6 +49,15 @@ void _combat_anim_finished();
  int _combat_check_bad_shot(Object* attacker, Object* defender, int hitMode, bool aiming);
  bool _combat_to_hit(Object* target, int* accuracy);
  void _combat_attack_this(Object* target);
@@ -10,6 +10,7 @@ index bdde123..17c0196 100644
 +// combatants sorted nearest-first; returns the count. And perform a forced aimed
 +// (called-shot) attack on `target` regardless of the weapon's current mode.
 +int combatGamepadListTargets(Object** out, int maxCount, bool wholeMap);
++int gamepadListInteractables(Object** out, int maxCount, bool wholeMap, int maxTiles, bool skipEmpty);
 +void combatGamepadAimedAttack(Object* target);
 +void combatGamepadApproachAndAttack(Object* target, bool attackAfter);
 +bool combatGamepadCalledShotActive();
