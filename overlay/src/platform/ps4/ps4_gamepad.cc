@@ -18,6 +18,7 @@
 
 // Phase B (world movement): the gamepad drives the player character directly, so
 // the PS4 input path needs the engine's movement/tile/context APIs.
+#include "actions.h"
 #include "animation.h"
 #include "combat.h"
 #include "display_monitor.h"
@@ -341,6 +342,10 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         // drives its navigation with the D-pad; aim, arrows and cursor-mode forcing
         // all pause so they don't fight the modal.
         bool actionMenu = gGameMouseActionMenuActive;
+        // Loot assist with a Skilldex skill active (Lockpick, Steal, ...): Cross must
+        // apply the skill at the cursor, so keep the plain positional click for that.
+        // Otherwise Cross acts on the SELECTED object directly (below).
+        bool lootSkillMode = lootAim && gameMouseGetMode() >= FIRST_GAME_MOUSE_MODE_SKILL;
 
         // Circle acts as a universal "close/back": whenever an in-game menu is open
         // (pipboy, inventory, char sheet, automap, skilldex, the Esc options menu,
@@ -392,7 +397,8 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         for (const auto& fb : kFaceButtons) {
             // During combat aim, Cross is the fire button (handled below), so skip
             // its normal action here (and leave its prev-state to the aim section).
-            if (combatAim && !actionMenu && fb.button == SDL_CONTROLLER_BUTTON_A) {
+            if ((combatAim || (lootAim && !lootSkillMode)) && !actionMenu
+                && fb.button == SDL_CONTROLLER_BUTTON_A) {
                 continue;
             }
             // While L2 is held, L1 is the loot-assist modifier (L2+L1), not its
@@ -721,6 +727,31 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
                             } else {
                                 _combat_attack_this(target);
                             }
+                        }
+                    }
+                    g_prevButtons[SDL_CONTROLLER_BUTTON_A] = fire;
+                }
+                else if (lootAim && !lootSkillMode && target != nullptr) {
+                    // Loot assist: act on the SELECTED object directly (walk up +
+                    // open/loot/door), not a positional click — so a container behind
+                    // clutter (e.g. a merchant's "Stuff" that overlaps a table) is
+                    // used instead of whatever the cursor overlaps. Dispatch per type
+                    // exactly as the engine's own ARROW-mode click does
+                    // (game_mouse.cc): objectUse only handles scenery, so items need
+                    // actionPickUp (which opens containers + runs their script/barter)
+                    // and corpses need actionLootCritter.
+                    bool fire = SDL_GameControllerGetButton(g_gamepad, SDL_CONTROLLER_BUTTON_A) != 0;
+                    if (fire && !g_prevButtons[SDL_CONTROLLER_BUTTON_A]) {
+                        switch (FID_TYPE(target->fid)) {
+                        case OBJ_TYPE_ITEM:
+                            actionPickUp(gDude, target);
+                            break;
+                        case OBJ_TYPE_CRITTER:
+                            actionLootCritter(gDude, target);
+                            break;
+                        case OBJ_TYPE_SCENERY:
+                            _action_use_an_object(gDude, target);
+                            break;
                         }
                     }
                     g_prevButtons[SDL_CONTROLLER_BUTTON_A] = fire;
