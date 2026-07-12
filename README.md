@@ -123,7 +123,7 @@ persist across pkg reinstalls.
 | **Touchpad — slide finger** | Move the cursor; a quick tap = left click |
 | **Touchpad — physical press** | Pipboy |
 | **Cross ✕** | Left click / confirm — *(during aim: fire / interact)* |
-| **Circle ◯** | Right click (cycle cursor mode) — *and closes any open menu* |
+| **Circle ◯** | Right click (cycle cursor mode) — *closes most menus; in inventory/barter/loot it stays right-click so you can inspect items (see `circle_close_all`)* |
 | **Square ▢** | Skilldex |
 | **Triangle △** | Character sheet |
 | **L1** | Inventory — *(with L2 held: loot/interact assist modifier)* |
@@ -133,8 +133,11 @@ persist across pkg reinstalls.
 | **R2 (with L2)** | Held during L2+✕ → **aimed / called shot (VATS)** |
 | **L3 (left stick click)** | Switch to the other equipped weapon |
 | **R3 (right stick click)** | Combat: start a fight / end turn — or end the fight when no enemy still wants to attack |
-| **D-pad** | Arrow keys (menu navigation); **←/→ cycle targets** while aiming |
+| **D-pad** | Arrow keys (menu navigation); **←/→ cycle targets** while aiming; **↑/↓ navigate** the hold-✕ action menu |
 | **Options** | Game menu (Save / Load / Preferences / Exit) |
+
+**Hold ✕ on an object** for the action menu (Talk / Look / Use / Push / …): **D-pad
+↑/↓** highlights an action, **release ✕** to pick it.
 
 ### Aim assist (hold L2)
 
@@ -238,6 +241,10 @@ melee_approach         = 1    # ✕ on an out-of-reach melee/unarmed target:
 loot_assist            = 1    # 1 = L2+L1 snaps onto containers/corpses/doors (0 = off)
 loot_snap_distance     = 20   # loot-assist reach, in hexes
 loot_skip_empty        = 1    # 1 = skip empty containers/corpses when cycling
+circle_close_all       = 0    # Circle in inventory / barter / loot:
+                              #   0 = stays right-click there (inspect items; close
+                              #       those with Options/Esc or Done)
+                              #   1 = Circle closes every menu (one-button close-all)
 ```
 
 ### Cursor & touchpad feel

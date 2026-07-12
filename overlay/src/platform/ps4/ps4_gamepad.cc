@@ -337,6 +337,10 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
             && !calledShotActive && !lootAim;
         bool worldAim = l2Held && g_ps4Controls.worldAutoAim && worldWalk && !isInCombat() && !lootAim;
         bool aimActive = combatAim || worldAim || lootAim;
+        // While the hold-Cross action menu (Talk/Look/Use/...) modal is up, the pad
+        // drives its navigation with the D-pad; aim, arrows and cursor-mode forcing
+        // all pause so they don't fight the modal.
+        bool actionMenu = gGameMouseActionMenuActive;
 
         // Circle acts as a universal "close/back": whenever an in-game menu is open
         // (pipboy, inventory, char sheet, automap, skilldex, the Esc options menu,
@@ -348,7 +352,16 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         int currentMode = GameMode::getCurrentGameMode();
         bool menuOpen = gGameLoaded
             && (currentMode & ~(GameMode::kCombat | GameMode::kPlayerTurn)) != 0;
-        bool circleCloses = calledShotActive || menuOpen;
+        // Inventory / barter / loot are cursor-driven: right-click there cycles the
+        // cursor to the "examine" mode to inspect items, so Circle must stay RMB, not
+        // Escape. Detect by the PRESENCE of one of those bits — barter is a sub-screen
+        // of dialog (kDialog|kBarter), so masking them out isn't enough; their bit has
+        // to WIN over the other bits. circle_close_all=1 forgoes this (veterans who
+        // want one-button close-everything). Close those windows with Options/Done.
+        int kCursorCycleModes = GameMode::kInventory | GameMode::kBarter | GameMode::kLoot;
+        bool inCursorWindow = (currentMode & kCursorCycleModes) != 0;
+        bool circleCloses = calledShotActive
+            || (menuOpen && !(inCursorWindow && g_ps4Controls.circleCloseAll == 0));
 
         // --- 0. Button mapping (remappable via ps4_controls.cfg) ---
         // Done first so the cursor-boost result is available to the cursor below,
@@ -379,7 +392,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         for (const auto& fb : kFaceButtons) {
             // During combat aim, Cross is the fire button (handled below), so skip
             // its normal action here (and leave its prev-state to the aim section).
-            if (combatAim && fb.button == SDL_CONTROLLER_BUTTON_A) {
+            if (combatAim && !actionMenu && fb.button == SDL_CONTROLLER_BUTTON_A) {
                 continue;
             }
             // While L2 is held, L1 is the loot-assist modifier (L2+L1), not its
@@ -424,9 +437,36 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
             ps4ApplyButton(g_ps4Controls.actShare, held, &s_prevTouchpadClick);
         }
 
+        // Hold-Cross action menu: D-pad up/down moves the cursor vertically so the
+        // modal (which highlights on mouse-Y deltas > 10px) steps prev/next; release
+        // Cross to pick. Reuses the arrow repeat cadence.
+        if (actionMenu) {
+            bool dpUp   = SDL_GameControllerGetButton(g_gamepad, SDL_CONTROLLER_BUTTON_DPAD_UP)   != 0;
+            bool dpDown = SDL_GameControllerGetButton(g_gamepad, SDL_CONTROLLER_BUTTON_DPAD_DOWN) != 0;
+            if (dpUp || dpDown) {
+                if ((int)(currentTicks - g_lastDpadTicks) > g_ps4Controls.dpadRepeatMs) {
+                    const float step = 14.0f; // clears the modal's 10px threshold
+                    int lw = screenGetWidth();
+                    int lh = screenGetHeight();
+                    g_virtualMouseY += dpUp ? -step : step;
+                    if (g_virtualMouseY < 0.0f) g_virtualMouseY = 0.0f;
+                    if (g_virtualMouseY > (float)(lh - 1)) g_virtualMouseY = (float)(lh - 1);
+                    if (gSdlWindow != nullptr) {
+                        int winW, winH;
+                        SDL_GetWindowSize(gSdlWindow, &winW, &winH);
+                        SDL_WarpMouseInWindow(gSdlWindow,
+                            (int)(g_virtualMouseX * (float)winW / (float)lw),
+                            (int)(g_virtualMouseY * (float)winH / (float)lh));
+                    }
+                    g_lastDpadTicks = currentTicks;
+                }
+            } else {
+                g_lastDpadTicks = 0;
+            }
+        }
         // D-Pad -> arrow keys (with repeat). Suppressed during aim assist, where
         // left/right cycle the target instead (handled in the aim section).
-        if (!aimActive) {
+        else if (!aimActive) {
             bool dpUp    = SDL_GameControllerGetButton(g_gamepad, SDL_CONTROLLER_BUTTON_DPAD_UP)    != 0;
             bool dpDown  = SDL_GameControllerGetButton(g_gamepad, SDL_CONTROLLER_BUTTON_DPAD_DOWN)  != 0;
             bool dpLeft  = SDL_GameControllerGetButton(g_gamepad, SDL_CONTROLLER_BUTTON_DPAD_LEFT)  != 0;
@@ -473,7 +513,9 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         // off, so re-engaging L2 reprints.
         static Object* s_apMsgTarget = nullptr;
         int desiredMouseMode;
-        if (combatAim) {
+        if (actionMenu) {
+            desiredMouseMode = -1; // don't touch the cursor the modal manages
+        } else if (combatAim) {
             desiredMouseMode = GAME_MOUSE_MODE_CROSSHAIR;
         } else if (lootAim) {
             // Keep an active Skilldex skill cursor (Lockpick, Steal, ...) so Cross
@@ -488,8 +530,9 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         }
 
         // Restore the saved mode whenever we're not forcing an aim cursor (L2
-        // release / not in an aimable context).
-        if (desiredMouseMode < 0 && s_savedMouseMode >= 0) {
+        // release / not in an aimable context). Skipped while the action menu is up
+        // so we don't reset the cursor it manages.
+        if (!actionMenu && desiredMouseMode < 0 && s_savedMouseMode >= 0) {
             gameMouseSetMode(s_savedMouseMode);
             s_savedMouseMode = -1;
         }
@@ -512,7 +555,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
                 : combatGamepadListTargets(buf, max, whole);
         };
 
-        if (aimActive) {
+        if (aimActive && !actionMenu) {
             if (!s_aimEngaged) {
                 // Engage: freeze the current viewport (or whole-map) target set.
                 s_aimCount = buildAimList(s_aimList, 16, g_ps4Controls.autoAimWholeMap != 0);

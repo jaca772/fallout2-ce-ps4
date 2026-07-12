@@ -389,6 +389,7 @@ Ps4ControlsConfig g_ps4Controls = {
     /* lootAssist */ 1,
     /* lootSnapDistance */ 20,
     /* lootSkipEmpty */ 1,
+    /* circleCloseAll */ 0,
 };
 
 // Map an action name to a PS4_ACT_* value (-1 = unknown, keep current).
@@ -527,6 +528,11 @@ static void ps4WriteDefaultControlsConfig(const char* path)
         "loot_assist=%d\n"
         "loot_snap_distance=%d\n"
         "loot_skip_empty=%d\n"
+        "# Circle in the item windows (inventory / barter / loot):\n"
+        "#  0 = Circle stays right-click there (cycle to the examine cursor, inspect\n"
+        "#      items); close those windows with Options/Esc or their Done button.\n"
+        "#  1 = Circle closes EVERY menu including those (one-button close-all).\n"
+        "circle_close_all=%d\n"
         "\n"
         "# Advanced feel tuning:\n"
         "#  walk_project_tiles = hexes projected per walk step (higher = smoother, less responsive)\n"
@@ -576,6 +582,7 @@ static void ps4WriteDefaultControlsConfig(const char* path)
         g_ps4Controls.autoAimWholeMap, g_ps4Controls.autoAimCenterCamera,
         g_ps4Controls.meleeApproach,
         g_ps4Controls.lootAssist, g_ps4Controls.lootSnapDistance, g_ps4Controls.lootSkipEmpty,
+        g_ps4Controls.circleCloseAll,
         g_ps4Controls.walkProjectTiles, g_ps4Controls.runSettleMs,
         g_ps4Controls.touchMaxGain, g_ps4Controls.touchTapMs,
         g_ps4Controls.touchTapMove, g_ps4Controls.dpadRepeatMs,
@@ -618,6 +625,7 @@ void ps4ReadControlsConfig()
         else if (sscanf(line, "loot_assist=%d", &iv) == 1) g_ps4Controls.lootAssist = iv;
         else if (sscanf(line, "loot_snap_distance=%d", &iv) == 1) g_ps4Controls.lootSnapDistance = iv;
         else if (sscanf(line, "loot_skip_empty=%d", &iv) == 1) g_ps4Controls.lootSkipEmpty = iv;
+        else if (sscanf(line, "circle_close_all=%d", &iv) == 1) g_ps4Controls.circleCloseAll = iv;
         else if (sscanf(line, "touch_sensitivity=%f", &fv) == 1) g_ps4Controls.touchSensitivity = fv;
         else if (sscanf(line, "touch_accel=%f", &fv) == 1) g_ps4Controls.touchAccel = fv;
         else if (sscanf(line, "touch_smoothing=%f", &fv) == 1) g_ps4Controls.touchSmoothing = fv;

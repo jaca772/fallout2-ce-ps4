@@ -115,6 +115,8 @@ struct Ps4ControlsConfig {
     int lootAssist;          // 1 = L2+L1 snaps onto containers/corpses/doors
     int lootSnapDistance;    // loot-assist reach in hexes
     int lootSkipEmpty;       // 1 = skip empty containers/corpses when cycling
+    int circleCloseAll;      // 1 = Circle closes EVERY menu (incl. inventory/barter/
+                             //     loot); 0 = Circle stays RMB in those (inspect items)
 };
 
 extern Ps4ControlsConfig g_ps4Controls;
