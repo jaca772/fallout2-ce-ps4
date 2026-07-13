@@ -71,6 +71,30 @@ if(PS4_MODULES_ON_CONSOLE)
     target_compile_definitions(${EXECUTABLE_NAME} PRIVATE PS4_MODULES_ON_CONSOLE)
 endif()
 
+# --- Optional native sceVideoOut render path (EXPERIMENTAL, drops Sony modules) ----
+# OFF (default): unchanged SDL2/Piglet renderer — the working, shipping build.
+# ON: present the software frame via a native sceVideoOut flip queue
+#   (src/platform/ps4/ps4_video.cc) and DON'T init SDL video, so Piglet never loads.
+#   SDL still statically references its GLES2/EGL/piglet symbols, so we link WITHOUT
+#   -lScePigletv2VSH and satisfy those symbols with empty stubs (ps4_piglet_stubs.c);
+#   none is ever called. The pkg then needs NO Sony modules and NO console-side file
+#   copying. See docs/ps4-native-videoout-plan.md. Everything is behind
+#   PS4_NATIVE_VIDEOOUT so the default build is byte-for-byte unchanged.
+option(PS4_NATIVE_VIDEOOUT "Render via native sceVideoOut instead of SDL/Piglet (no Sony modules)" OFF)
+if(PS4_NATIVE_VIDEOOUT)
+    message(STATUS "PS4: native sceVideoOut path ENABLED (no Piglet/Shacc)")
+    target_compile_definitions(${EXECUTABLE_NAME} PRIVATE PS4_NATIVE_VIDEOOUT)
+    target_sources(${EXECUTABLE_NAME} PUBLIC
+        "src/platform/ps4/ps4_video.h"
+        "src/platform/ps4/ps4_video.cc"
+        "src/platform/ps4/ps4_piglet_stubs.c"
+    )
+    # Drop the Sony piglet import lib (stubs replace it); add SceVideoOut, which
+    # ps4_video.cc calls directly (the default build reaches it only via Piglet).
+    list(REMOVE_ITEM SDL2_LIBRARIES "-lScePigletv2VSH")
+    list(APPEND PS4_SYSTEM_LIBRARIES -lSceVideoOut)
+endif()
+
 # --- PS4 sources, symbol wraps, patched link script -------------------------
 # Target properties / linker flags below are order-independent, so they live
 # here (in the overlay) instead of inline in the top-level CMakeLists — that

@@ -16,6 +16,16 @@ set(PS4_VERSION     "01.00")
 set(PS4_CONTENT_ID  "IV0001-${PS4_TITLE_ID}_00-FALL200020100000")
 set(PS4_PAID        "0x3800000000000011")
 
+# The experimental native-sceVideoOut build gets its OWN title id so it installs
+# ALONGSIDE the normal (Piglet) port instead of colliding with it on the console.
+# NOTE: a PS4 title id must be 4 letters + 5 DIGITS (e.g. FALL20003) — a letter in the
+# numeric part makes the pkg uninstallable (CE-32957-6).
+if(PS4_NATIVE_VIDEOOUT)
+    set(PS4_TITLE       "Fallout II CE (native videoout)")
+    set(PS4_TITLE_ID    "FALL20003")
+    set(PS4_CONTENT_ID  "IV0001-${PS4_TITLE_ID}_00-FALL200030100000")
+endif()
+
 set(PS4_PKG_DIR "${CMAKE_CURRENT_BINARY_DIR}/pkg")
 set(PS4_SCE_SYS_SRC "${CMAKE_SOURCE_DIR}/os/ps4/sce_sys")
 set(PS4_SCE_MODULE_SRC "${CMAKE_SOURCE_DIR}/os/ps4/sce_module")

@@ -255,6 +255,12 @@ static void ps4LoadGlesModule(const char* path)
 
 void ps4PreSdlInit()
 {
+#ifdef PS4_NATIVE_VIDEOOUT
+    // Native sceVideoOut build: we never init SDL video, so Piglet/Shacc are neither
+    // loaded nor needed. Skipping this is what makes the pkg free of Sony modules.
+    ps4Log("[ps4] native sceVideoOut: skipping Piglet/Shacc module load\n");
+    return;
+#else
     // Point the SDL2 OpenOrbis backend at the piglet/shacc modules bundled in
     // our pkg. Without this SDL loads the system VSH copy from
     // /<sandbox>/common/lib, whose ABI doesn't match the SDK stubs the engine
@@ -275,6 +281,7 @@ void ps4PreSdlInit()
     // ps4MountData) — if the load logs an error the user hasn't copied them there.
     ps4LoadGlesModule(PS4_GLES_MODULE_PATH "/libSceShaccVSH.sprx");
     ps4LoadGlesModule(PS4_GLES_MODULE_PATH "/libScePigletv2VSH.sprx");
+#endif
 }
 
 bool ps4ConfigurePigletForEgl(int width, int height)

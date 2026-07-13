@@ -1,8 +1,74 @@
 diff --git a/src/movie.cc b/src/movie.cc
-index 9bfa679..0d84cef 100644
+index 9bfa679..6f299bc 100644
 --- a/src/movie.cc
 +++ b/src/movie.cc
-@@ -283,7 +283,9 @@ static void movieFreeImpl(void* ptr)
+@@ -21,6 +21,10 @@
+ #include "window.h"
+ #include "window_manager.h"
+ 
++#ifdef PS4_NATIVE_VIDEOOUT
++#include "platform/ps4/ps4_video.h"
++#endif
++
+ namespace fallout {
+ 
+ typedef struct MovieSubtitleListNode {
+@@ -65,6 +69,9 @@ static MovieDirectOverlay movieDirectOverlay;
+ 
+ static void movieDirectOverlayDestroy()
+ {
++#ifdef PS4_NATIVE_VIDEOOUT
++    ps4VideoMovieOverlayClear();
++#endif
+     if (movieDirectOverlay.texture != nullptr) {
+         SDL_DestroyTexture(movieDirectOverlay.texture);
+         movieDirectOverlay.texture = nullptr;
+@@ -79,6 +86,12 @@ static void movieDirectOverlayDestroy()
+ 
+ static bool movieDirectOverlayEnsureTexture(int width, int height)
+ {
++#ifdef PS4_NATIVE_VIDEOOUT
++    // Native path: no SDL texture; ps4_video composites from the CPU upload buffer.
++    movieDirectOverlay.srcWidth = width;
++    movieDirectOverlay.srcHeight = height;
++    return true;
++#else
+     if (movieDirectOverlay.texture != nullptr
+         && movieDirectOverlay.srcWidth == width
+         && movieDirectOverlay.srcHeight == height) {
+@@ -100,13 +113,20 @@ static bool movieDirectOverlayEnsureTexture(int width, int height)
+     movieDirectOverlay.srcWidth = width;
+     movieDirectOverlay.srcHeight = height;
+     return true;
++#endif
+ }
+ 
+ static void movieDirectOverlayUpload(unsigned char* pixels, int srcWidth, int srcHeight)
+ {
++#ifdef PS4_NATIVE_VIDEOOUT
++    if (gSdlSurface == nullptr || gSdlSurface->format == nullptr || gSdlSurface->format->palette == nullptr) {
++        return;
++    }
++#else
+     if (movieDirectOverlay.texture == nullptr || gSdlSurface == nullptr || gSdlSurface->format == nullptr || gSdlSurface->format->palette == nullptr) {
+         return;
+     }
++#endif
+ 
+     int width = srcWidth;
+     int height = srcHeight;
+@@ -132,8 +152,10 @@ static void movieDirectOverlayUpload(unsigned char* pixels, int srcWidth, int sr
+         }
+     }
+ 
++#ifndef PS4_NATIVE_VIDEOOUT
+     SDL_Rect rect = { 0, 0, width, height };
+     SDL_UpdateTexture(movieDirectOverlay.texture, &rect, movieDirectOverlay.uploadBuffer.data(), width * static_cast<int>(sizeof(uint32_t)));
++#endif
+ }
+ 
+ // 0x5195BC subtitleFont
+@@ -283,7 +305,9 @@ static void movieFreeImpl(void* ptr)
  // 0x48662C movieRead
  static bool movieReadImpl(void* handle, void* buf, int count)
  {
@@ -13,7 +79,45 @@ index 9bfa679..0d84cef 100644
  }
  
  // 0x486654 movie_MVE_ShowFrame
-@@ -765,7 +767,9 @@ int _movieRunRect(int win, char* filePath, int x, int y, int w, int h)
+@@ -301,6 +325,9 @@ static void movieDirectImpl(unsigned char* pixels, int src_width, int src_height
+ 
+     if (movieOutputRect.w == src_width && movieOutputRect.h == src_height) {
+         movieDirectOverlay.active = false;
++#ifdef PS4_NATIVE_VIDEOOUT
++        ps4VideoMovieOverlayClear();
++#endif
+         _scr_blit(pixels, src_width, src_height, 0, 0, src_width, src_height, movieOutputRect.x, movieOutputRect.y);
+     } else {
+         // we're scaling, so use an SDL overlay to render
+@@ -312,16 +339,27 @@ static void movieDirectImpl(unsigned char* pixels, int src_width, int src_height
+         movieDirectOverlayUpload(pixels, src_width, src_height);
+         movieDirectOverlay.dstRect = movieOutputRect;
+         movieDirectOverlay.active = true;
++#ifdef PS4_NATIVE_VIDEOOUT
++        // Stage the scaled frame for compositing inside ps4VideoPresent (no SDL
++        // renderer to RenderCopy into). dst rect is in game/logical coords.
++        ps4VideoMovieOverlaySet(movieDirectOverlay.uploadBuffer.data(), src_width, src_height, movieOutputRect);
++#endif
+     }
+ }
+ 
+ void movieRenderDirectOverlay()
+ {
++#ifdef PS4_NATIVE_VIDEOOUT
++    // Native path composites the overlay inside ps4VideoPresent from the staged
++    // state; nothing to do here (renderPresent doesn't reach this on PS4 anyway).
++    return;
++#else
+     if (!movieDirectOverlay.active || movieDirectOverlay.texture == nullptr) {
+         return;
+     }
+ 
+     SDL_RenderCopy(gSdlRenderer, movieDirectOverlay.texture, nullptr, &movieDirectOverlay.dstRect);
++#endif
+ }
+ 
+ void movieHandleRendererReset()
+@@ -765,7 +803,9 @@ int _movieRunRect(int win, char* filePath, int x, int y, int w, int h)
  // 0x487B7C stepMovie
  static int _stepMovie()
  {

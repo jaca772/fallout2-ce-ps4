@@ -1,0 +1,102 @@
+diff --git a/src/svga.cc b/src/svga.cc
+index f521e17..0fd2302 100644
+--- a/src/svga.cc
++++ b/src/svga.cc
+@@ -20,6 +20,10 @@
+ #include "window_manager.h"
+ #include "window_manager_private.h"
+ 
++#ifdef PS4_NATIVE_VIDEOOUT
++#include "platform/ps4/ps4_video.h"
++#endif
++
+ namespace fallout {
+ 
+ static bool createRenderer(int width, int height);
+@@ -158,6 +162,20 @@ int _init_vesa_mode(int width, int height)
+ // 0x4CAEDC GNW95_init_window
+ int _GNW95_init_window(int width, int height, bool fullscreen, int scale)
+ {
++#ifdef PS4_NATIVE_VIDEOOUT
++    // PS4: no SDL window (that needs the video subsystem = Piglet). The engine's
++    // input/mouse path doesn't require a window (dinput.cc fills the cursor from the
++    // gamepad directly). Bring up the native sceVideoOut renderer once.
++    (void)fullscreen;
++    (void)scale;
++    if (gSdlTextureSurface == nullptr) {
++        if (!createRenderer(width, height)) {
++            destroyRenderer();
++            return -1;
++        }
++    }
++    return 0;
++#else
+     if (gSdlWindow == nullptr) {
+         SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
+ 
+@@ -183,6 +201,7 @@ int _GNW95_init_window(int width, int height, bool fullscreen, int scale)
+     }
+ 
+     return 0;
++#endif
+ }
+ 
+ // 0x4CAF9C GNW95_init_DirectDraw
+@@ -344,12 +363,29 @@ int screenGetVisibleHeight()
+ 
+ bool screenIsFullscreen()
+ {
++#ifdef PS4_NATIVE_VIDEOOUT
++    // No SDL window; sceVideoOut is always full-panel.
++    return true;
++#else
+     Uint32 flags = SDL_GetWindowFlags(gSdlWindow);
+     return (flags & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP)) != 0;
++#endif
+ }
+ 
+ static bool createRenderer(int width, int height)
+ {
++#ifdef PS4_NATIVE_VIDEOOUT
++    // Native path: no SDL renderer/texture (both need the GLES/Piglet backend). Open
++    // sceVideoOut and allocate the software present surface the engine blits into.
++    if (!ps4VideoInit(width, height)) {
++        return false;
++    }
++    gSdlTextureSurface = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_RGB888);
++    if (gSdlTextureSurface == nullptr) {
++        return false;
++    }
++    return true;
++#else
+     gSdlRenderer = SDL_CreateRenderer(gSdlWindow, -1, 0);
+     if (gSdlRenderer == nullptr) {
+         return false;
+@@ -375,10 +411,14 @@ static bool createRenderer(int width, int height)
+     }
+ 
+     return true;
++#endif
+ }
+ 
+ static void destroyRenderer()
+ {
++#ifdef PS4_NATIVE_VIDEOOUT
++    ps4VideoShutdown();
++#endif
+     if (gSdlTextureSurface != nullptr) {
+         SDL_FreeSurface(gSdlTextureSurface);
+         gSdlTextureSurface = nullptr;
+@@ -405,6 +445,12 @@ void handleWindowSizeChanged()
+ 
+ void renderPresent()
+ {
++#ifdef PS4_NATIVE_VIDEOOUT
++    // Present the finished software frame via sceVideoOut. The movie overlay (if any)
++    // is composited inside ps4VideoPresent from the state movie.cc staged.
++    ps4VideoPresent(gSdlTextureSurface);
++    return;
++#endif
+     SDL_UpdateTexture(gSdlTexture, nullptr, gSdlTextureSurface->pixels, gSdlTextureSurface->pitch);
+     SDL_RenderClear(gSdlRenderer);
+     SDL_RenderCopy(gSdlRenderer, gSdlTexture, nullptr, nullptr);

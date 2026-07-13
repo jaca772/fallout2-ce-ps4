@@ -20,7 +20,9 @@ MODIFIED=$(git -C "$FORK" diff --name-status "$REF" ps4 | awk '$1=="M"{print $2}
 #             only; the public repo carries just docs/porting-notes.md (hand-written,
 #             outside overlay/ so refresh never touches it), and the built tree needs
 #             no docs.
-ADDED_OK=$(echo "$ADDED" | grep -viE '\.sprx$|^docs/' || true)
+#   os/ps4/spike-videoout/ — standalone Phase-0 de-risk probes (own eboots/pkgs); a
+#             dev experiment, not part of the engine build, so kept out of the overlay.
+ADDED_OK=$(echo "$ADDED" | grep -viE '\.sprx$|^docs/|^os/ps4/spike-videoout/' || true)
 git -C "$FORK" archive ps4 $ADDED_OK | tar -x -C "$ROOT/overlay"
 
 # patches = one diff per modified upstream file

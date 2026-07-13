@@ -6,6 +6,10 @@
 #   os/ps4/build.sh            # configure + build + package
 #   os/ps4/build.sh clean      # wipe the build dir first
 #
+# Extra CMake flags can be passed via PS4_EXTRA_CMAKE, e.g. to build the optional
+# native-sceVideoOut variant (no Sony modules):
+#   PS4_EXTRA_CMAKE=-DPS4_NATIVE_VIDEOOUT=ON os/ps4/build.sh clean
+#
 # Output: build-ps4/<CONTENT_ID>.pkg
 set -e
 
@@ -30,7 +34,8 @@ unset LDFLAGS
 
 "$OPENORBIS/usr/bin/openorbis-cmake" -S "$ROOT" -B "$BUILD" \
     -DCMAKE_BUILD_TYPE=Release \
-    -DFALLOUT_VENDORED=OFF
+    -DFALLOUT_VENDORED=OFF \
+    ${PS4_EXTRA_CMAKE:-}
 
 cmake --build "$BUILD" -j"$(nproc)"
 
