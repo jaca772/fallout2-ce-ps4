@@ -1,14 +1,22 @@
 # DualShock 4 Controller Configuration Guide
 
-This port features a highly customizable gamepad subsystem designed specifically for PlayStation 4. All settings are loaded from **`/data/fallout2/ps4_controls.cfg`** on startup.
+This port features a dedicated gamepad subsystem built specifically for PlayStation 4. All settings are loaded from **`/data/fallout2/ps4_controls.cfg`** on startup.
 
 The configuration file is **automatically generated on first launch** with commented defaults. You can edit this file over FTP (e.g. GoldHEN FTP server on port 2121) without rebuilding the package. To restore default settings at any time, simply delete `ps4_controls.cfg` and relaunch the game.
 
 ---
 
-## 1. Remapping Buttons
+## 1. Quick In-Game Controls & Shortcuts
 
-Assign any of the supported actions to the button keys.
+- **Action Menu (Hold ✕):** Hovering over or aiming at any interactive object or NPC and **holding ✕** brings up the classic Fallout circular/vertical action menu (*Talk, Look, Use, Inventory, Push*). Use **D-pad ↑ / ↓** to select an action and release **✕** to perform it.
+- **Called Shot / VATS (Hold L2 + R2):** While holding **L2** (combat target snap), press **R2** to open the called-shot interface (targeting eyes, head, torso, groin, arms, legs). Use D-pad to pick the body part and press **✕** to confirm attack.
+- **Loot / Door Assist (Hold L2 + L1):** Snaps reticle to nearest containers, corpses, or doors. Press **✕** to loot or open/close. If a skill (e.g. Lockpick) is active in Skilldex, pressing **✕** applies it directly to the door/container.
+
+---
+
+## 2. Remapping Buttons
+
+Assign any of the supported actions to the button keys in `ps4_controls.cfg`.
 
 ### Available Actions
 
@@ -47,7 +55,7 @@ btn_options  = esc          btn_share   = pipboy
 
 ---
 
-## 2. Analog Stick Roles
+## 3. Analog Stick Roles
 
 You can configure the behavior of each analog stick independently using `world_left_stick` and `world_right_stick`:
 
@@ -66,7 +74,7 @@ world_right_stick = cursor
 
 ---
 
-## 3. Aim & Interaction Assist
+## 4. Aim & Interaction Assist Options
 
 ```ini
 combat_auto_aim        = 1    # 1 = Snap onto nearest hostile in combat via L2 (0 = off)
@@ -87,7 +95,7 @@ circle_close_all       = 0    # Circle behavior in inventory / barter / loot scr
 
 ---
 
-## 4. Cursor & Touchpad Sensitivity
+## 5. Cursor & Touchpad Sensitivity
 
 Fine-tune the responsiveness of both the stick cursor and the DualShock 4 touchpad:
 
@@ -105,7 +113,7 @@ touch_tap_move      = 40      # Maximum finger movement allowed during a tap cli
 
 ---
 
-## 5. Camera & Advanced Settings
+## 6. Camera & Advanced Settings
 
 ```ini
 camera_deadzone_x    = 100    # Horizontal deadzone before camera starts tracking (px)
