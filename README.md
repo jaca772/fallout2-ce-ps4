@@ -65,7 +65,9 @@ Saves are stored in `/data/fallout2/data/SAVEGAME/` and persist across PKG updat
 - **Loot / Interact Snap (Hold L2 + L1):** Snaps to nearest containers, corpses, or doors. Press **✕** to loot or open/close. If a skill (e.g. Lockpick) is active in Skilldex, pressing **✕** applies it directly to the door/container.
 
 ### Customizing Controls
-All gamepad bindings and sensitivity settings can be customized in **`/data/fallout2/ps4_controls.cfg`** (created automatically on first launch). You can edit this file over FTP.
+All gamepad bindings, stick behavior, aim-assist parameters, and touchpad sensitivity settings can be fully customized in **`/data/fallout2/ps4_controls.cfg`** (created automatically on first launch, editable over FTP).
+
+For a complete reference on button remapping, stick roles, and advanced tunables, see the **[Controller Configuration Guide](docs/controller-mapping.md)**.
 
 ---
 
