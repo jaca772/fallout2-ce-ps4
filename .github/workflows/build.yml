@@ -1,8 +1,8 @@
-# PS4 overlay build — on demand ONLY (workflow_dispatch; deliberately no schedule —
+# PS4 overlay build -- on demand ONLY (workflow_dispatch; deliberately no schedule --
 # fallout2-ce is experimental and commits daily, so builds are always manual).
-# Publish-safe / secret-free: the default (console) mode bundles no Sony modules, so
-# CI needs no proprietary files. It clones fallout2-ce, applies overlay + patches,
-# builds the pkg with the OpenOrbis toolchain (seeded once — see
+# Publish-safe / secret-free: renders via native sceVideoOut, bundles no Sony modules,
+# and requires no proprietary files. It clones fallout2-ce, applies overlay + patches,
+# builds the pkg with the OpenOrbis toolchain (seeded once -- see
 # scripts/seed-toolchain.md), and (by default) publishes it as a GitHub Release.
 name: build-ps4
 
@@ -14,12 +14,7 @@ on:
         required: false
         default: ""
       publish_release:
-        description: "Publish the pkg as a GitHub Release (uncheck for a test build — artifact only)"
-        type: boolean
-        required: false
-        default: true
-      native_videoout:
-        description: "Also build the experimental native-sceVideoOut pkg (no Sony modules; FALL20003)"
+        description: "Publish the pkg as a GitHub Release (uncheck for a test build -- artifact only)"
         type: boolean
         required: false
         default: true
@@ -44,7 +39,7 @@ jobs:
 
       # First run / cache miss: fetch the toolchain you seeded once as a release
       # asset (see scripts/seed-toolchain.md). gh handles private-repo auth via
-      # GITHUB_TOKEN, so there is no URL/asset-id to configure — just the tag.
+      # GITHUB_TOKEN, so there is no URL/asset-id to configure -- just the tag.
       - name: Fetch OpenOrbis toolchain
         if: steps.toolchain.outputs.cache-hit != 'true'
         env:
@@ -57,7 +52,7 @@ jobs:
           sudo mkdir -p /opt/pacbrew
           sudo tar -xzf /tmp/toolchain.tar.gz -C /opt/pacbrew
 
-      - name: Build pkg(s)
+      - name: Build pkg
         run: |
           set -euxo pipefail
           source /opt/pacbrew/ps4/openorbis/ps4vars.sh
@@ -65,20 +60,10 @@ jobs:
             export UPSTREAM_REF='${{ github.event.inputs.upstream_ref }}'
           fi
 
-          # 1) Console (default) pkg: SDL/Piglet renderer; the user supplies the two
-          #    Sony GLES modules on the console.
           bash scripts/build.sh
-
-          # 2) Native sceVideoOut pkg (experimental): renders via native sceVideoOut,
-          #    needs NO Sony modules and no console-side file copying. Distinct title
-          #    id (FALL20003) so it installs alongside the console build.
-          if [ "${{ inputs.native_videoout }}" = "true" ]; then
-            PS4_EXTRA_CMAKE=-DPS4_NATIVE_VIDEOOUT=ON bash scripts/build.sh
-          fi
-
           ls -la *.pkg
 
-      - name: Upload pkg(s)
+      - name: Upload pkg
         uses: actions/upload-artifact@v4
         with:
           name: fallout2-ce-ps4-pkg
@@ -107,24 +92,18 @@ jobs:
           gh release delete "$tag" --cleanup-tag --yes || true
 
           notes=$(cat <<EOF
-          PS4 pkg(s) built from **fallout2-ce @ \`$short\`** ($date).
+          PS4 pkg built from **fallout2-ce @ \`$short\`** ($date).
           Requested ref: \`$ref\`.
 
-          **Console build** — \`IV0001-FALL20002_00-FALL200020100000.pkg\` (SDL/Piglet
-          renderer). On the console you supply the game data **and** the two GLES
-          modules (\`libScePigletv2VSH.sprx\`, \`libSceShaccVSH.sprx\`); this pkg bundles
-          no Sony modules.
-
-          **Native sceVideoOut build (experimental)** — \`IV0001-FALL20003_00-FALL200030100000.pkg\`
-          ("Fallout II CE (native videoout)"). Renders via native sceVideoOut, so it needs
-          **no Sony modules at all** — only the game data. Installs alongside the console
-          build. Included when the \`native_videoout\` input is checked.
+          **Package** -- \`IV0001-FALL20002_00-FALL200020100000.pkg\` ("Fallout II Community Edition").
+          Renders via native \`sceVideoOut\` flip queues (zero proprietary Sony modules needed).
+          On the console you only need to supply your game data at \`/data/fallout2/\`.
 
           See the README for the full setup.
           EOF
           )
 
           gh release create "$tag" \
-            --title "PS4 pkg — CE @ $short (build #${{ github.run_number }})" \
+            --title "PS4 pkg -- CE @ $short (build #${{ github.run_number }})" \
             --notes "$notes" \
             *.pkg build-manifest.txt
