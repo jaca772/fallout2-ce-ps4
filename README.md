@@ -9,7 +9,7 @@ never a big merge.
 - `overlay/` — new PS4 files (build machinery, platform layer, gamepad, docs).
   Copied on top of pristine upstream. **Zero patches needed.**
 - `patches/` — 18 small `#ifdef __PS4__` hook patches into upstream files.
-- `scripts/apply.sh` — clone upstream@ref + overlay + patches + private modules → buildable `tree/`.
+- `scripts/apply.sh` — clone upstream@ref + overlay + patches  → buildable `tree/`.
 - `scripts/build.sh` — `apply.sh` + build + package → `*.pkg`.
 - `scripts/config.sh` — which upstream ref to build (`UPSTREAM_REF`; `main` = latest CE).
 - `.github/workflows/build.yml` — on-demand cloud build (see **Building** below).
@@ -31,10 +31,7 @@ are available.
 - 🟡 **Other firmwares: expected to work but untested.** This is ordinary
   OpenOrbis-SDL homebrew (`libjbc` acts on an already-jailbroken kernel, it is not
   version-locked), so any GoldHEN-capable firmware that has the GLES modules —
-  roughly **5.05 through 11.00** — *should* run it. The most likely per-firmware
-  wrinkle is the availability/compatibility of the GLES modules (Piglet/Shacc); if
-  your console has them at the shared path, the rest of the stack is well-trodden on
-  those firmwares. No PSN/online is used.
+  roughly **5.05 through 11.00** — *should* run it. Renders via native `sceVideoOut` (no extra modules needed). No PSN/online is used.
 
 If you try it on another firmware (5.05 in particular is common), a quick report of
 what works helps expand this list.
@@ -90,23 +87,11 @@ leftovers) — harmless, just not required.
 - **Resolution:** set your screen size in `fallout2.cfg` `[screen]`
   (`resolution_x` / `resolution_y`, e.g. 1920×1080 for 1080p widescreen).
 
-### 2. The two GLES modules (once, on the console)
-The default build ships **no Sony modules** (so it's publish-safe). Copy them once
-to the shared console path (any OpenOrbis-SDL2 homebrew, e.g. the SM64 port, uses
-the same files):
-
-```
-/data/self/system/common/lib/libScePigletv2VSH.sprx
-/data/self/system/common/lib/libSceShaccVSH.sprx
-```
-
-Without them the app closes at launch with `PRX_NOT_RESOLVED 0xa0020101`.
-
-### 3. Install the pkg
+### 2. Install the pkg
 Install `IV0001-FALL20002_00-FALL200020100000.pkg` (GoldHEN Debug Settings → PKG
 installer, or your usual method), then launch **Fallout II Community Edition**.
 
-### 4. Saves
+### 3. Saves
 Save games live under `/data/fallout2/` (the engine's `SAVEGAME` dir) — they
 persist across pkg reinstalls.
 

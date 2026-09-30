@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # Reconstruct a buildable tree = pristine fallout2-ce (cloned at the target ref)
-# + our overlay files + our hook patches + the proprietary modules (out-of-band).
+# + our overlay files + our hook patches .
 # Usage: scripts/apply.sh [TREE_DIR]
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/scripts/config.sh"
 TREE="${1:-$ROOT/tree}"
-PRIVATE="${PS4_PRIVATE_DIR:-$ROOT/private}"
 
 echo ">> clone upstream @ ${UPSTREAM_REF}"
 rm -rf "$TREE"
@@ -32,17 +31,6 @@ for p in "$ROOT"/patches/*.patch; do
     git -C "$TREE" apply --whitespace=nowarn "$p" || { echo "PATCH FAILED: $p"; exit 1; }
 done
 
-echo ">> proprietary modules (never committed to this repo)"
-if [ -d "$PRIVATE" ] && find "$PRIVATE" -name '*.sprx' -print -quit | grep -q .; then
-    cp -a "$PRIVATE/." "$TREE/"
-    echo "   provisioned from $PRIVATE"
-else
-    echo "!! WARNING: no *.sprx found under $PRIVATE"
-    echo "!! the resulting pkg will NOT boot (PRX_NOT_RESOLVED). Drop the modules:"
-    echo "!!   private/os/ps4/sce_module/libScePigletv2VSH.sprx"
-    echo "!!   private/os/ps4/sce_module/libSceShaccVSH.sprx"
-    echo "!!   private/os/ps4/sce_sys/about/right.sprx"
-fi
 
 # per-build snapshot of exactly what we built against
 git -C "$TREE" log -1 --date=iso --pretty="upstream_commit=%H%nupstream_date=%cd" > "$ROOT/build-manifest.txt"

@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       upstream_ref:
-        description: "fallout2-ce ref (blank = pinned in scripts/config.sh; 'main' = latest CE)"
+        description: "fallout2-ce ref (LEAVE BLANK for tested/pinned CE build; do not enter 'main')"
         required: false
         default: ""
       publish_release:
