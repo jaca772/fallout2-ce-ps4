@@ -1,14 +1,13 @@
 #ifndef FALLOUT_PLATFORM_PS4_PS4_VIDEO_H_
 #define FALLOUT_PLATFORM_PS4_PS4_VIDEO_H_
 
-// Native sceVideoOut presentation path (optional build, PS4_NATIVE_VIDEOOUT).
+// Native sceVideoOut presentation path on PS4.
 //
-// Replaces SDL2's GLES renderer (which pulls the Sony Piglet/Shacc modules) with a
-// direct sceVideoOut flip queue. The engine keeps rendering its software frame into
-// gSdlTextureSurface exactly as before; here we just upscale + present it, plus
-// composite the movie overlay. Nothing in this file runs in the default build.
+// Replaces SDL2's GLES renderer with a direct sceVideoOut flip queue.
+// The engine keeps rendering its software frame into gSdlTextureSurface;
+// here we upscale + present it via sceVideoOut, plus composite the movie overlay.
 
-#ifdef PS4_NATIVE_VIDEOOUT
+#ifdef __PS4__
 
 #include <SDL.h>
 
@@ -32,6 +31,6 @@ void ps4VideoMovieOverlayClear();
 
 } // namespace fallout
 
-#endif // PS4_NATIVE_VIDEOOUT
+#endif // __PS4__
 
 #endif // FALLOUT_PLATFORM_PS4_PS4_VIDEO_H_

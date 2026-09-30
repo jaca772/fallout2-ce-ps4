@@ -6,9 +6,7 @@
 #   os/ps4/build.sh            # configure + build + package
 #   os/ps4/build.sh clean      # wipe the build dir first
 #
-# Extra CMake flags can be passed via PS4_EXTRA_CMAKE, e.g. to build the optional
-# native-sceVideoOut variant (no Sony modules):
-#   PS4_EXTRA_CMAKE=-DPS4_NATIVE_VIDEOOUT=ON os/ps4/build.sh clean
+# Extra CMake flags can be passed via PS4_EXTRA_CMAKE if needed.
 #
 # Output: build-ps4/<CONTENT_ID>.pkg
 set -e

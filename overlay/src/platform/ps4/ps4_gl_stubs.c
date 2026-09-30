@@ -1,18 +1,14 @@
-// Link-time stubs for the native sceVideoOut build (PS4_NATIVE_VIDEOOUT).
+// Link-time stubs for SDL2 GLES/EGL symbols on PS4.
 //
-// Linking SDL2 statically pulls its GLES2 renderer + EGL/Piglet video backend, whose
-// only EXTERNAL Sony symbol is scePigletSetConfigurationVSH, plus 75 gl*/egl* symbols
-// normally provided by the Sony Piglet module. In the native build we never init SDL
-// video (so none of these is ever CALLED), which lets us link WITHOUT
-// -lScePigletv2VSH by defining them here as empty. This removes the Sony module
-// dependency from the eboot.
+// Linking SDL2 statically pulls its GLES2 renderer + EGL video backend, whose
+// only external Sony symbols are scePigletSetConfigurationVSH plus 75 gl*/egl* symbols.
+// Because the PS4 port presents frames directly via native sceVideoOut, SDL video
+// is never initialised (so none of these functions is ever called). Defining empty
+// stubs here allows linking without -lScePigletv2VSH, removing all proprietary Sony
+// module dependencies from the eboot.
 //
-// Plain C so the symbols have C linkage (matching SDL's references). Guarded so the
-// DEFAULT build (which links the real -lScePigletv2VSH) compiles this to nothing.
+// Plain C so the symbols have C linkage (matching SDL's references).
 
-#ifdef PS4_NATIVE_VIDEOOUT
-
-// The one Sony-module function SDL's video backend references.
 int scePigletSetConfigurationVSH(const void* cfg) { (void)cfg; return 0; }
 
 void eglBindAPI(void) {}
@@ -90,5 +86,3 @@ void glUniformMatrix4fv(void) {}
 void glUseProgram(void) {}
 void glVertexAttribPointer(void) {}
 void glViewport(void) {}
-
-#endif // PS4_NATIVE_VIDEOOUT

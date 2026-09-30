@@ -1,12 +1,12 @@
 diff --git a/src/svga.cc b/src/svga.cc
-index f521e17..0fd2302 100644
+index f521e17..0e06226 100644
 --- a/src/svga.cc
 +++ b/src/svga.cc
 @@ -20,6 +20,10 @@
  #include "window_manager.h"
  #include "window_manager_private.h"
  
-+#ifdef PS4_NATIVE_VIDEOOUT
++#ifdef __PS4__
 +#include "platform/ps4/ps4_video.h"
 +#endif
 +
@@ -17,10 +17,10 @@ index f521e17..0fd2302 100644
  // 0x4CAEDC GNW95_init_window
  int _GNW95_init_window(int width, int height, bool fullscreen, int scale)
  {
-+#ifdef PS4_NATIVE_VIDEOOUT
-+    // PS4: no SDL window (that needs the video subsystem = Piglet). The engine's
-+    // input/mouse path doesn't require a window (dinput.cc fills the cursor from the
-+    // gamepad directly). Bring up the native sceVideoOut renderer once.
++#ifdef __PS4__
++    // PS4: no SDL window. The engine's input/mouse path doesn't require a window
++    // (dinput.cc fills the cursor from the gamepad directly). Bring up the native
++    // sceVideoOut renderer once.
 +    (void)fullscreen;
 +    (void)scale;
 +    if (gSdlTextureSurface == nullptr) {
@@ -46,7 +46,7 @@ index f521e17..0fd2302 100644
  
  bool screenIsFullscreen()
  {
-+#ifdef PS4_NATIVE_VIDEOOUT
++#ifdef __PS4__
 +    // No SDL window; sceVideoOut is always full-panel.
 +    return true;
 +#else
@@ -57,9 +57,9 @@ index f521e17..0fd2302 100644
  
  static bool createRenderer(int width, int height)
  {
-+#ifdef PS4_NATIVE_VIDEOOUT
-+    // Native path: no SDL renderer/texture (both need the GLES/Piglet backend). Open
-+    // sceVideoOut and allocate the software present surface the engine blits into.
++#ifdef __PS4__
++    // Native path: no SDL renderer/texture. Open sceVideoOut and allocate the
++    // software present surface the engine blits into.
 +    if (!ps4VideoInit(width, height)) {
 +        return false;
 +    }
@@ -81,7 +81,7 @@ index f521e17..0fd2302 100644
  
  static void destroyRenderer()
  {
-+#ifdef PS4_NATIVE_VIDEOOUT
++#ifdef __PS4__
 +    ps4VideoShutdown();
 +#endif
      if (gSdlTextureSurface != nullptr) {
@@ -91,7 +91,7 @@ index f521e17..0fd2302 100644
  
  void renderPresent()
  {
-+#ifdef PS4_NATIVE_VIDEOOUT
++#ifdef __PS4__
 +    // Present the finished software frame via sceVideoOut. The movie overlay (if any)
 +    // is composited inside ps4VideoPresent from the state movie.cc staged.
 +    ps4VideoPresent(gSdlTextureSurface);

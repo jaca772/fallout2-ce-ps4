@@ -14,7 +14,6 @@
 #include <SDL.h>
 
 #include <orbis/libkernel.h>
-#include <orbis/Pigletv2VSH.h>
 #include <orbis/SystemService.h>
 
 #include <jbc/libjbc.h>
@@ -219,92 +218,6 @@ void ps4Log(const char* fmt, ...)
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
     sceKernelDebugOutText(0, buf);
-}
-
-// Directory (inside the app package) that holds bundled modules (libc.prx,
-// libSceFios2.prx). Must match where packaging.cmake stages sce_module.
-#define PS4_SCE_MODULE_PATH "/app0/sce_module"
-
-// Where the proprietary GLES modules (libScePigletv2VSH.sprx + libSceShaccVSH.sprx)
-// live. Default: bundled in the pkg (self-contained, install-and-run). With
-// -DPS4_MODULES_ON_CONSOLE they instead come from a shared console location the
-// user copies them to once (SM64-port style) — this keeps the DISTRIBUTED pkg free
-// of Sony modules (publish-safe). See os/ps4/sce_module/README.md.
-#ifdef PS4_MODULES_ON_CONSOLE
-#define PS4_GLES_MODULE_PATH "/data/self/system/common/lib"
-#else
-#define PS4_GLES_MODULE_PATH PS4_SCE_MODULE_PATH
-#endif
-
-// Explicitly load a GLES module from our pkg before SDL's own PS4_PigletInit
-// runs. This is load-bearing, not just diagnostic: SDL's internal
-// sceKernelLoadStartModule for piglet fails silently on this port, so its later
-// patch step can't find the module by name (GetModuleInfoByName ENOENT ->
-// "unable to patch" -> SIGSYS). Loading here registers the module under its
-// basename first, so SDL's load returns the existing handle and the patch step
-// succeeds ("patching module done" / "PS4_PigletInit: Ok").
-//
-// The logged return code helps future debugging: a small value is a module id
-// (success); 0x8xxxxxxx is an error (0x80020002 ENOENT = file missing; a
-// decrypt/auth error would mean the .sprx isn't a loadable fake-self).
-static void ps4LoadGlesModule(const char* path)
-{
-    uint32_t r = sceKernelLoadStartModule(path, 0, nullptr, 0, nullptr, nullptr);
-    ps4EarlyLog("[ps4] sceKernelLoadStartModule(%s) -> 0x%08x\n", path, r);
-}
-
-void ps4PreSdlInit()
-{
-#ifdef PS4_NATIVE_VIDEOOUT
-    // Native sceVideoOut build: we never init SDL video, so Piglet/Shacc are neither
-    // loaded nor needed. Skipping this is what makes the pkg free of Sony modules.
-    ps4Log("[ps4] native sceVideoOut: skipping Piglet/Shacc module load\n");
-    return;
-#else
-    // Point the SDL2 OpenOrbis backend at the piglet/shacc modules bundled in
-    // our pkg. Without this SDL loads the system VSH copy from
-    // /<sandbox>/common/lib, whose ABI doesn't match the SDK stubs the engine
-    // linked against -> PRX_NOT_RESOLVED_FUNCTION / failed piglet patch.
-    //
-    // This MUST go through SDL's hint system, not libc setenv: SDL's PS4 port
-    // reads the path via SDL_GetHint/SDL_getenv, which uses SDL's own env table,
-    // not libc's environ. A libc setenv() here is silently ignored (observed:
-    // piglet still loaded from the default /<sandbox>/common/lib path).
-    // OVERRIDE priority beats any pre-existing value. Safe before SDL_Init.
-    SDL_SetHintWithPriority("SDL_PS4_PIGLET_MODULES_PATH", PS4_GLES_MODULE_PATH, SDL_HINT_OVERRIDE);
-    SDL_setenv("SDL_PS4_PIGLET_MODULES_PATH", PS4_GLES_MODULE_PATH, 1);
-
-    // Pre-load the GLES modules so their load result is visible in klog and so
-    // they are registered before SDL's own PS4_PigletInit runs. Shacc first
-    // (piglet's shader compiler dependency), then piglet. With PS4_MODULES_ON_CONSOLE
-    // these come from the shared console path (must be readable this early, before
-    // ps4MountData) — if the load logs an error the user hasn't copied them there.
-    ps4LoadGlesModule(PS4_GLES_MODULE_PATH "/libSceShaccVSH.sprx");
-    ps4LoadGlesModule(PS4_GLES_MODULE_PATH "/libScePigletv2VSH.sprx");
-#endif
-}
-
-bool ps4ConfigurePigletForEgl(int width, int height)
-{
-    OrbisPglConfig config;
-    memset(&config, 0, sizeof(config));
-    config.size = sizeof(config);
-    config.flags = ORBIS_PGL_FLAGS_USE_COMPOSITE_EXT | ORBIS_PGL_FLAGS_USE_FLEXIBLE_MEMORY | 0x60;
-    config.processOrder = 1;
-    config.systemSharedMemorySize = 0x1000000;       // 16 MB
-    config.videoSharedMemorySize = 0x3000000;        // 48 MB
-    config.maxMappedFlexibleMemory = 0xFFFFFFFF;     // 4 GB
-    config.drawCommandBufferSize = 0x100000;        // 1 MB
-    config.lcueResourceBufferSize = 0x1000000;       // 16 MB
-    config.dbgPosCmd_0x40 = 1920;                    // Physical display width
-    config.dbgPosCmd_0x44 = 1080;                    // Physical display height
-    config.dbgPosCmd_0x48 = 0;
-    config.dbgPosCmd_0x4C = 0;
-    config.unk_0x5C = 2;
-
-    bool ok = scePigletSetConfigurationVSH(&config);
-    ps4Log("[ps4] scePigletSetConfigurationVSH(sys=16 vid=48 flex=max MiB, %dx%d) -> %d\n", width, height, ok ? 1 : 0);
-    return ok;
 }
 
 // Reads the engine's target resolution from fallout2.cfg's [screen] section.
@@ -699,9 +612,8 @@ void ps4ReadControlsConfig()
 // EPERM traversing a mount whose backing lives in the system prison (device
 // 2026-07-07: mount succeeded, chdir returned EPERM).
 //
-// This MUST run AFTER SDL_Init. Doing the cred swap earlier makes the VideoOut/
-// mbus handshake in PS4_VideoInit reject our creds and the app SIGSYSes right
-// after piglet init (observed on 9.00). By here video init has completed.
+// This MUST run AFTER SDL_Init. Doing the cred swap earlier corrupts SDL's
+// service handshake (observed: SIGSYS). By here SDL_Init has completed.
 // Logs up to 16 entries of a directory to klog (post-jailbreak diagnostics).
 static void ps4ListDir(const char* dir)
 {

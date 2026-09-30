@@ -1,5 +1,5 @@
 diff --git a/src/win32.cc b/src/win32.cc
-index 811f233..a3e5492 100644
+index 811f233..de54172 100644
 --- a/src/win32.cc
 +++ b/src/win32.cc
 @@ -30,6 +30,10 @@
@@ -13,50 +13,19 @@ index 811f233..a3e5492 100644
  namespace fallout {
  
  // 0x51E444 GNW95_isActive
-@@ -52,6 +56,13 @@ const char* getMacOsBundleResourcesPath()
- 
- int main(int argc, char* argv[])
- {
-+#ifdef __PS4__
-+    // Piglet/shacc module setup only. The /data mount happens AFTER SDL_Init
-+    // (see below) because libjbc's brief credential swap corrupts SDL's video
-+    // service init if done first.
-+    ps4PreSdlInit();
-+#endif
-+
-     scanUnimplementdParseCommandLineArguments(argc, argv);
- 
-     int rc;
-@@ -98,19 +109,99 @@ int main(int argc, char* argv[])
+@@ -98,19 +102,75 @@ int main(int argc, char* argv[])
      chdir(SDL_AndroidGetExternalStoragePath());
  #endif
  
 +#ifdef __PS4__
-+    // On PS4 each Sce service (VideoOut/AudioOut/Pad/UserService/Ipmi/...) opens
-+    // an mbus client, and the process is capped at 8. Initialising AUDIO here
-+    // together with VIDEO pushes the count past the limit and PS4_VideoInit dies
-+    // with SIGSYS ("[mbus] onNewClient clientNum 10 over 8"). Match the working
-+    // OpenOrbis SDL sample: bring up VIDEO (+JOYSTICK for the gamepad) now, and
-+    // defer AUDIO to audioEngineInit() via SDL_InitSubSystem so the clients open
-+    // spread out and stay under the cap.
-+#ifdef PS4_NATIVE_VIDEOOUT
-+    // Native sceVideoOut path: do NOT init SDL video. Piglet is initialised inside the
-+    // SDL PS4 video driver's CreateDevice, which runs only for SDL_INIT_VIDEO — so
-+    // dropping VIDEO here is exactly what keeps the Sony modules unloaded. Input
-+    // (joystick/gamecontroller) + events stay on SDL; audio is still deferred to
-+    // audioEngineInit() (SDL_InitSubSystem AUDIO), same as the default path.
++    // Native sceVideoOut path: do NOT init SDL video.
++    // Input (joystick/gamecontroller) + events stay on SDL; audio is deferred to
++    // audioEngineInit() (SDL_InitSubSystem AUDIO).
 +    if (SDL_Init(SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) != 0) {
 +        ps4Log("[ps4] SDL_Init(JOYSTICK|GAMECONTROLLER|EVENTS) FAILED: %s\n", SDL_GetError());
 +        return EXIT_FAILURE;
 +    }
-+    ps4Log("[ps4] SDL_Init(JOYSTICK|GAMECONTROLLER|EVENTS) ok (native sceVideoOut, no video/Piglet)\n");
-+#else
-+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER) != 0) {
-+        ps4Log("[ps4] SDL_Init(VIDEO|JOYSTICK|GAMECONTROLLER) FAILED: %s\n", SDL_GetError());
-+        return EXIT_FAILURE;
-+    }
-+    ps4Log("[ps4] SDL_Init(VIDEO|JOYSTICK|GAMECONTROLLER) ok\n");
-+#endif
++    ps4Log("[ps4] SDL_Init(JOYSTICK|GAMECONTROLLER|EVENTS) ok\n");
 +#else
      if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
          return EXIT_FAILURE;
@@ -87,14 +56,7 @@ index 811f233..a3e5492 100644
 +    // Load user-tunable gamepad settings (touch sensitivity, deadzones, etc.).
 +    ps4ReadControlsConfig();
 +
-+#ifndef PS4_NATIVE_VIDEOOUT
-+    // Piglet/EGL configuration is only for the SDL renderer path. The native
-+    // sceVideoOut path opens the display itself in ps4VideoInit (via createRenderer).
-+    if (!ps4ConfigurePigletForEgl(ps4ResX, ps4ResY)) {
-+        ps4Log("[ps4] Piglet EGL configuration FAILED\n");
-+        return EXIT_FAILURE;
-+    }
-+#endif
++
 +
 +    int ps4WinW = ps4ResX;
 +    int ps4WinH = ps4ResY;

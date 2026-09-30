@@ -10,21 +10,10 @@ namespace fallout {
 // See CLAUDE.md "Filesystem layout on console".
 #define PS4_DATA_PATH "/data/fallout2"
 
-// Pre-SDL setup: points SDL's OpenOrbis backend at the bundled piglet/shacc
-// modules and pre-loads them. Must run BEFORE SDL_Init (piglet is set up during
-// SDL video init). Does NOT touch credentials, so SDL's system-service init is
-// left untouched. Safe to call unconditionally.
 // Writes a printf-formatted line to the console debug channel (klog). Works
 // before SDL_Init and before the heap is up — unlike SDL_Log (its sink is only
 // installed during SDL_Init) and printf (its stdout is not wired on this port).
 void ps4Log(const char* fmt, ...);
-
-void ps4PreSdlInit();
-
-// Sets Piglet/EGL memory configuration before the first SDL window creation.
-// SDL's PS4 backend does not do this on the bundled-module path, but Piglet
-// expects it before eglGetDisplay().
-bool ps4ConfigurePigletForEgl(int width, int height);
 
 // Reads [screen] resolution_x/resolution_y/scale from fallout2.cfg so the PS4
 // bootstrap window matches the resolution the engine will use. Must run after

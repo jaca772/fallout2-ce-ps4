@@ -1,12 +1,12 @@
 diff --git a/src/movie.cc b/src/movie.cc
-index 9bfa679..6f299bc 100644
+index 9bfa679..4592018 100644
 --- a/src/movie.cc
 +++ b/src/movie.cc
 @@ -21,6 +21,10 @@
  #include "window.h"
  #include "window_manager.h"
  
-+#ifdef PS4_NATIVE_VIDEOOUT
++#ifdef __PS4__
 +#include "platform/ps4/ps4_video.h"
 +#endif
 +
@@ -17,7 +17,7 @@ index 9bfa679..6f299bc 100644
  
  static void movieDirectOverlayDestroy()
  {
-+#ifdef PS4_NATIVE_VIDEOOUT
++#ifdef __PS4__
 +    ps4VideoMovieOverlayClear();
 +#endif
      if (movieDirectOverlay.texture != nullptr) {
@@ -27,7 +27,7 @@ index 9bfa679..6f299bc 100644
  
  static bool movieDirectOverlayEnsureTexture(int width, int height)
  {
-+#ifdef PS4_NATIVE_VIDEOOUT
++#ifdef __PS4__
 +    // Native path: no SDL texture; ps4_video composites from the CPU upload buffer.
 +    movieDirectOverlay.srcWidth = width;
 +    movieDirectOverlay.srcHeight = height;
@@ -45,7 +45,7 @@ index 9bfa679..6f299bc 100644
  
  static void movieDirectOverlayUpload(unsigned char* pixels, int srcWidth, int srcHeight)
  {
-+#ifdef PS4_NATIVE_VIDEOOUT
++#ifdef __PS4__
 +    if (gSdlSurface == nullptr || gSdlSurface->format == nullptr || gSdlSurface->format->palette == nullptr) {
 +        return;
 +    }
@@ -61,7 +61,7 @@ index 9bfa679..6f299bc 100644
          }
      }
  
-+#ifndef PS4_NATIVE_VIDEOOUT
++#ifndef __PS4__
      SDL_Rect rect = { 0, 0, width, height };
      SDL_UpdateTexture(movieDirectOverlay.texture, &rect, movieDirectOverlay.uploadBuffer.data(), width * static_cast<int>(sizeof(uint32_t)));
 +#endif
@@ -83,7 +83,7 @@ index 9bfa679..6f299bc 100644
  
      if (movieOutputRect.w == src_width && movieOutputRect.h == src_height) {
          movieDirectOverlay.active = false;
-+#ifdef PS4_NATIVE_VIDEOOUT
++#ifdef __PS4__
 +        ps4VideoMovieOverlayClear();
 +#endif
          _scr_blit(pixels, src_width, src_height, 0, 0, src_width, src_height, movieOutputRect.x, movieOutputRect.y);
@@ -93,7 +93,7 @@ index 9bfa679..6f299bc 100644
          movieDirectOverlayUpload(pixels, src_width, src_height);
          movieDirectOverlay.dstRect = movieOutputRect;
          movieDirectOverlay.active = true;
-+#ifdef PS4_NATIVE_VIDEOOUT
++#ifdef __PS4__
 +        // Stage the scaled frame for compositing inside ps4VideoPresent (no SDL
 +        // renderer to RenderCopy into). dst rect is in game/logical coords.
 +        ps4VideoMovieOverlaySet(movieDirectOverlay.uploadBuffer.data(), src_width, src_height, movieOutputRect);
@@ -103,7 +103,7 @@ index 9bfa679..6f299bc 100644
  
  void movieRenderDirectOverlay()
  {
-+#ifdef PS4_NATIVE_VIDEOOUT
++#ifdef __PS4__
 +    // Native path composites the overlay inside ps4VideoPresent from the staged
 +    // state; nothing to do here (renderPresent doesn't reach this on PS4 anyway).
 +    return;

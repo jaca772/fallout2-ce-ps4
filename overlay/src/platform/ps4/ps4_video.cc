@@ -1,4 +1,4 @@
-#ifdef PS4_NATIVE_VIDEOOUT
+#ifdef __PS4__
 
 #include "platform/ps4/ps4_video.h"
 #include "platform/ps4/ps4.h"
@@ -258,4 +258,4 @@ void ps4VideoMovieOverlayClear()
 
 } // namespace fallout
 
-#endif // PS4_NATIVE_VIDEOOUT
+#endif // __PS4__
