@@ -261,10 +261,10 @@ void ps4GamepadWorldMove()
         ang += 360.0f;
     }
     int idx = ((int)(ang / 60.0f + 0.5f)) % 6;
-    static const int kIdxToRotation[6] = {
+    static const Rotation kIdxToRotation[6] = {
         ROTATION_E, ROTATION_NE, ROTATION_NW, ROTATION_W, ROTATION_SW, ROTATION_SE
     };
-    int rotation = kIdxToRotation[idx];
+    Rotation rotation = kIdxToRotation[idx];
 
     int destTile = tileGetTileInDirection(gDude->tile, rotation, PROJECT_TILES);
 
@@ -513,14 +513,14 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         // CROSSHAIR (with the % to-hit box); out of combat the ARROW/action mode,
         // which makes the engine show the talk/look/use cursor and inspect the
         // pointed critter — the "interaction" cursor. -1 = not aiming, restore.
-        static int s_savedMouseMode = -1;
+        static GameMouseMode s_savedMouseMode = GAME_MOUSE_MODE_INVALID;
         // Target we last printed the AP-cost line for, so combat aim prints it once
         // per target (on change) instead of every frame. Cleared when combat aim is
         // off, so re-engaging L2 reprints.
         static Object* s_apMsgTarget = nullptr;
-        int desiredMouseMode;
+        GameMouseMode desiredMouseMode;
         if (actionMenu) {
-            desiredMouseMode = -1; // don't touch the cursor the modal manages
+            desiredMouseMode = GAME_MOUSE_MODE_INVALID; // don't touch the cursor the modal manages
         } else if (combatAim) {
             desiredMouseMode = GAME_MOUSE_MODE_CROSSHAIR;
         } else if (lootAim) {
@@ -528,19 +528,19 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
             // applies the skill to the snapped target; otherwise the action (arrow)
             // cursor, so Cross loots / opens.
             desiredMouseMode = (gameMouseGetMode() >= FIRST_GAME_MOUSE_MODE_SKILL)
-                ? -1 : GAME_MOUSE_MODE_ARROW;
+                ? GAME_MOUSE_MODE_INVALID : GAME_MOUSE_MODE_ARROW;
         } else if (worldAim) {
             desiredMouseMode = GAME_MOUSE_MODE_ARROW;
         } else {
-            desiredMouseMode = -1;
+            desiredMouseMode = GAME_MOUSE_MODE_INVALID;
         }
 
         // Restore the saved mode whenever we're not forcing an aim cursor (L2
         // release / not in an aimable context). Skipped while the action menu is up
         // so we don't reset the cursor it manages.
-        if (!actionMenu && desiredMouseMode < 0 && s_savedMouseMode >= 0) {
+        if (!actionMenu && desiredMouseMode == GAME_MOUSE_MODE_INVALID && s_savedMouseMode != GAME_MOUSE_MODE_INVALID) {
             gameMouseSetMode(s_savedMouseMode);
-            s_savedMouseMode = -1;
+            s_savedMouseMode = GAME_MOUSE_MODE_INVALID;
         }
         if (!combatAim) {
             s_apMsgTarget = nullptr;
@@ -620,7 +620,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
                 // for short-range (melee/unarmed) weapons — ranged weapons don't
                 // auto-approach. It ignores obstacles, so it's a lower bound.
                 if (combatAim && target != s_apMsgTarget) {
-                    int hitMode;
+                    HitMode hitMode;
                     bool aiming;
                     if (interfaceGetCurrentHitMode(&hitMode, &aiming) != -1) {
                         int attackAP = itemGetActionPointCost(gDude, hitMode, aiming);
@@ -651,8 +651,8 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
                 // Force the context aim cursor (save the prior mode once): combat
                 // crosshair with the % to-hit box, or the out-of-combat action mode
                 // that shows the talk/look/use cursor over the pointed person.
-                if (desiredMouseMode >= 0) {
-                    if (s_savedMouseMode < 0) {
+                if (desiredMouseMode != GAME_MOUSE_MODE_INVALID) {
+                    if (s_savedMouseMode == GAME_MOUSE_MODE_INVALID) {
                         s_savedMouseMode = gameMouseGetMode();
                     }
                     if (gameMouseGetMode() != desiredMouseMode) {
@@ -715,7 +715,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
                             // then swing, mirroring the enemy AI. The engine's
                             // _combat_attack_this alone just says "out of range".
                             // melee_approach config: 0 off, 1 run-up only, 2 run+attack.
-                            int hm;
+                            HitMode hm;
                             bool aim;
                             int range = (interfaceGetCurrentHitMode(&hm, &aim) != -1)
                                 ? weaponGetRange(gDude, hm) : 0;
@@ -742,7 +742,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
                     // and corpses need actionLootCritter.
                     bool fire = SDL_GameControllerGetButton(g_gamepad, SDL_CONTROLLER_BUTTON_A) != 0;
                     if (fire && !g_prevButtons[SDL_CONTROLLER_BUTTON_A]) {
-                        switch (FID_TYPE(target->fid)) {
+                        switch (objectTypeFromPid(target->pid)) {
                         case OBJ_TYPE_ITEM:
                             actionPickUp(gDude, target);
                             break;

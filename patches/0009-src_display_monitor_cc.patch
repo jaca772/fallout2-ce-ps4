@@ -1,5 +1,5 @@
 diff --git a/src/display_monitor.cc b/src/display_monitor.cc
-index 6b5c2b4..1727b29 100644
+index 48d3f1fd..2f9f8546 100644
 --- a/src/display_monitor.cc
 +++ b/src/display_monitor.cc
 @@ -95,7 +95,16 @@ static int _disp_start;
@@ -20,7 +20,7 @@ index 6b5c2b4..1727b29 100644
  static int gConsoleFilePrintCount = 0;
  
  // 0x431610 display_init
-@@ -442,29 +451,29 @@ static void consoleFileInit()
+@@ -441,29 +450,29 @@ static void consoleFileInit()
  {
      const std::string& consolePath = settings.debug.console_output_path;
      if (!consolePath.empty()) {
@@ -57,7 +57,7 @@ index 6b5c2b4..1727b29 100644
  
          gConsoleFilePrintCount++;
          if (gConsoleFilePrintCount >= 20) {
-@@ -475,9 +484,9 @@ static void consoleFileAddMessage(const char* message)
+@@ -474,9 +483,9 @@ static void consoleFileAddMessage(const char* message)
  
  static void consoleFileFlush()
  {

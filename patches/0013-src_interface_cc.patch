@@ -1,8 +1,8 @@
 diff --git a/src/interface.cc b/src/interface.cc
-index 3e9da78..6af2aaf 100644
+index 2c295de6..7ae8db50 100644
 --- a/src/interface.cc
 +++ b/src/interface.cc
-@@ -2109,6 +2109,66 @@ static int _intface_item_reload()
+@@ -2271,6 +2271,66 @@ static int _intface_item_reload()
      return 0;
  }
  
@@ -32,7 +32,7 @@ index 3e9da78..6af2aaf 100644
 +
 +    int apRequired = 0;
 +    if (isInCombat()) {
-+        int hitMode = gInterfaceCurrentHand == HAND_LEFT
++        HitMode hitMode = gInterfaceCurrentHand == HAND_LEFT
 +            ? HIT_MODE_LEFT_WEAPON_RELOAD
 +            : HIT_MODE_RIGHT_WEAPON_RELOAD;
 +        apRequired = itemGetActionPointCost(gDude, hitMode, false);

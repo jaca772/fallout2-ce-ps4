@@ -77,6 +77,7 @@ target_sources(${EXECUTABLE_NAME} PUBLIC
     "src/platform/ps4/ps4_gl_stubs.c"
 )
 target_include_directories(${EXECUTABLE_NAME} PRIVATE "src")
+target_compile_options(${EXECUTABLE_NAME} PRIVATE "-include" "${CMAKE_SOURCE_DIR}/src/platform/ps4/ps4_fix_math.h")
 
 # Redirect the C++ runtime's global-destructor registration to the no-op
 # __wrap___cxa_atexit in ps4.cc — libSceLibcInternal's atexit machinery

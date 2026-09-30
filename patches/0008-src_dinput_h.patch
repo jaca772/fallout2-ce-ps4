@@ -1,8 +1,8 @@
 diff --git a/src/dinput.h b/src/dinput.h
-index 72f2b05..cc72a71 100644
+index fda98487..31b00656 100644
 --- a/src/dinput.h
 +++ b/src/dinput.h
-@@ -38,6 +38,12 @@ void keyboardDeviceFree();
+@@ -39,6 +39,12 @@ void keyboardDeviceFree();
  void handleMouseEvent(SDL_Event* event);
  void handleTouchEvent(SDL_Event* event);
  

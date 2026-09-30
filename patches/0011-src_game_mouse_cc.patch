@@ -1,8 +1,8 @@
 diff --git a/src/game_mouse.cc b/src/game_mouse.cc
-index 5d04804..317e3c2 100644
+index a8886505..7f15d988 100644
 --- a/src/game_mouse.cc
 +++ b/src/game_mouse.cc
-@@ -54,6 +54,10 @@ static constexpr int REFRESH_BOTH_CURSORS = REFRESH_BOUNCING_CURSOR | REFRESH_HE
+@@ -62,6 +62,10 @@ static constexpr int REFRESH_BOTH_CURSORS = REFRESH_BOUNCING_CURSOR | REFRESH_HE
  // 0x518BF8 gmouse_initialized
  static bool gGameMouseInitialized = false;
  
@@ -13,7 +13,7 @@ index 5d04804..317e3c2 100644
  // 0x518BFC gmouse_enabled
  static bool _gmouse_enabled = false;
  
-@@ -1176,6 +1180,7 @@ void _gmouse_handle_event(int mouseX, int mouseY, int mouseState)
+@@ -1224,6 +1228,7 @@ void _gmouse_handle_event(int mouseX, int mouseY, int mouseState)
  
                      int newMouseY = mouseY;
                      int actionIndex = 0;
@@ -21,7 +21,7 @@ index 5d04804..317e3c2 100644
                      while ((mouseGetEvent() & MOUSE_EVENT_LEFT_BUTTON_UP) == 0) {
                          sharedFpsLimiter.mark();
  
-@@ -1205,6 +1210,7 @@ void _gmouse_handle_event(int mouseX, int mouseY, int mouseState)
+@@ -1255,6 +1260,7 @@ void _gmouse_handle_event(int mouseX, int mouseY, int mouseState)
                          renderPresent();
                          sharedFpsLimiter.throttle();
                      }

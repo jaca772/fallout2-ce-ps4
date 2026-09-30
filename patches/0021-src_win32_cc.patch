@@ -1,5 +1,5 @@
 diff --git a/src/win32.cc b/src/win32.cc
-index 811f233..de54172 100644
+index 811f233f..86634a4f 100644
 --- a/src/win32.cc
 +++ b/src/win32.cc
 @@ -30,6 +30,10 @@
@@ -68,7 +68,7 @@ index 811f233..de54172 100644
 +        ps4WinH /= ps4WinScale;
 +    }
 +
-+    if (_GNW95_init_window(ps4WinW, ps4WinH, true, ps4WinScale) == -1) {
++    if (_GNW95_init_window(ps4WinW, ps4WinH, WindowMode::Fullscreen, ps4WinScale) == -1) {
 +        ps4Log("[ps4] early SDL window bootstrap FAILED: %s\n", SDL_GetError());
 +        return EXIT_FAILURE;
 +    }

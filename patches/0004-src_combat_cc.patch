@@ -1,8 +1,8 @@
 diff --git a/src/combat.cc b/src/combat.cc
-index c1f2862..d1aebd6 100644
+index 91f7197a..3404be6e 100644
 --- a/src/combat.cc
 +++ b/src/combat.cc
-@@ -1928,6 +1928,12 @@ static Object* gCalledShotCritter;
+@@ -1932,6 +1932,12 @@ static Object* gCalledShotCritter;
  // 0x56D374 call_win
  static int gCalledShotWindow;
  
@@ -15,7 +15,7 @@ index c1f2862..d1aebd6 100644
  // 0x56D378 combat_elev
  static int _combat_elev;
  
-@@ -5667,6 +5673,8 @@ static int calledShotSelectHitLocation(Object* critter, int* hitLocation, int hi
+@@ -5763,6 +5769,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
  
      windowRefresh(gCalledShotWindow);
  
@@ -24,7 +24,7 @@ index c1f2862..d1aebd6 100644
      bool gameUiWasDisabled = gameUiIsDisabled();
      if (gameUiWasDisabled) {
          gameUiEnable();
-@@ -5707,6 +5715,8 @@ static int calledShotSelectHitLocation(Object* critter, int* hitLocation, int hi
+@@ -5803,6 +5811,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
  
      windowDestroy(gCalledShotWindow);
  
@@ -33,7 +33,7 @@ index c1f2862..d1aebd6 100644
      if (eventCode == KEY_ESCAPE) {
          return -1;
      }
-@@ -5891,6 +5901,351 @@ void _combat_attack_this(Object* target)
+@@ -5989,6 +5999,351 @@ void _combat_attack_this(Object* target)
      }
  }
  
@@ -61,7 +61,7 @@ index c1f2862..d1aebd6 100644
 +    // engine uses for line-of-sight awareness).
 +    int maxRange;
 +    if (inCombat) {
-+        int hitMode;
++        HitMode hitMode;
 +        bool aiming;
 +        if (interfaceGetCurrentHitMode(&hitMode, &aiming) == -1) {
 +            maxRange = 1;
@@ -108,7 +108,7 @@ index c1f2862..d1aebd6 100644
 +        if (c == nullptr || c == gDude) {
 +            continue;
 +        }
-+        if (FID_TYPE(c->fid) != OBJ_TYPE_CRITTER) {
++        if (objectTypeFromPid(c->pid) != OBJ_TYPE_CRITTER) {
 +            continue;
 +        }
 +        if ((c->data.critter.combat.results & (DAM_DEAD | DAM_KNOCKED_OUT)) != 0) {
@@ -177,7 +177,7 @@ index c1f2862..d1aebd6 100644
 +    int visibleH = screenGetVisibleHeight();
 +    int count = 0;
 +
-+    static const int kTypes[] = { OBJ_TYPE_ITEM, OBJ_TYPE_CRITTER, OBJ_TYPE_SCENERY };
++    static const ObjectType kTypes[] = { OBJ_TYPE_ITEM, OBJ_TYPE_CRITTER, OBJ_TYPE_SCENERY };
 +    for (int t = 0; t < 3 && count < maxCount; t++) {
 +        Object** list;
 +        int listLen = objectListCreate(-1, gElevation, kTypes[t], &list);
@@ -282,7 +282,7 @@ index c1f2862..d1aebd6 100644
 +        if (critter == nullptr || critter == gDude) {
 +            continue;
 +        }
-+        if (FID_TYPE(critter->fid) != OBJ_TYPE_CRITTER) {
++        if (objectTypeFromPid(critter->pid) != OBJ_TYPE_CRITTER) {
 +            continue;
 +        }
 +        // Dead / unconscious critters are no threat.
@@ -314,7 +314,7 @@ index c1f2862..d1aebd6 100644
 +        return;
 +    }
 +
-+    int hitMode;
++    HitMode hitMode;
 +    bool aiming;
 +    if (interfaceGetCurrentHitMode(&hitMode, &aiming) == -1) {
 +        return;
@@ -327,7 +327,7 @@ index c1f2862..d1aebd6 100644
 +        return;
 +    }
 +
-+    int hitLocation;
++    HitLocation hitLocation;
 +    if (calledShotSelectHitLocation(target, &hitLocation, hitMode) != -1) {
 +        _combat_attack(gDude, target, hitMode, hitLocation);
 +    }
@@ -362,7 +362,7 @@ index c1f2862..d1aebd6 100644
 +
 +        reg_anim_begin(ANIMATION_REQUEST_RESERVED);
 +        if (actionPoints >= critterGetStat(gDude, STAT_MAXIMUM_ACTION_POINTS) / 2
-+            && artCritterFidShouldRun(gDude->fid)) {
++            && artCritterFrmIdShouldRun(FrmId(gDude->fid))) {
 +            animationRegisterRunToObject(gDude, target, actionPoints, 0);
 +        } else {
 +            animationRegisterMoveToObject(gDude, target, actionPoints, 0);

@@ -1,9 +1,9 @@
 diff --git a/src/game_mouse.h b/src/game_mouse.h
-index 44eb2fb..33a5564 100644
+index d1c2b230..9a30b8dc 100644
 --- a/src/game_mouse.h
 +++ b/src/game_mouse.h
-@@ -69,6 +69,8 @@ typedef enum MouseCursorType {
- } MouseCursorType;
+@@ -78,6 +78,8 @@ constexpr inline MouseCursorType operator+(MouseCursorType lhs, MouseCursorType
+ }
  
  extern bool _gmouse_clicked_on_edge;
 +// PS4: set while the hold-Cross action menu modal is up (see game_mouse.cc).

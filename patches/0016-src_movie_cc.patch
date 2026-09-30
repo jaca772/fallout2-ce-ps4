@@ -1,5 +1,5 @@
 diff --git a/src/movie.cc b/src/movie.cc
-index 9bfa679..4592018 100644
+index 278f908e..8e022046 100644
 --- a/src/movie.cc
 +++ b/src/movie.cc
 @@ -21,6 +21,10 @@

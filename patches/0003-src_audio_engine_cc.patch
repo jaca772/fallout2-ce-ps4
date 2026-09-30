@@ -1,5 +1,5 @@
 diff --git a/src/audio_engine.cc b/src/audio_engine.cc
-index 849f2cf..7eeb083 100644
+index aa7ba11a..b7d6453e 100644
 --- a/src/audio_engine.cc
 +++ b/src/audio_engine.cc
 @@ -97,6 +97,16 @@ static void audioEngineMixin(void* userData, Uint8* stream, int length)
@@ -19,7 +19,7 @@ index 849f2cf..7eeb083 100644
      SDL_AudioSpec desiredSpec;
      // Request 44.1 kHz output so 44.1 kHz ACM music can play without being
      // downsampled by the mixer on the common path.
-@@ -120,8 +130,18 @@ bool audioEngineInit()
+@@ -123,8 +133,18 @@ bool audioEngineInit()
  void audioEngineExit()
  {
      if (audioEngineIsInitialized()) {

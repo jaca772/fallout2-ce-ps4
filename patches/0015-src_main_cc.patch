@@ -1,8 +1,8 @@
 diff --git a/src/main.cc b/src/main.cc
-index 0381a2f..71f7eec 100644
+index e5eb9544..7528df63 100644
 --- a/src/main.cc
 +++ b/src/main.cc
-@@ -13,6 +13,7 @@
+@@ -14,6 +14,7 @@
  #include "cycle.h"
  #include "db.h"
  #include "debug.h"
@@ -10,7 +10,7 @@ index 0381a2f..71f7eec 100644
  #include "draw.h"
  #include "endgame.h"
  #include "game.h"
-@@ -384,6 +385,12 @@ static void mainLoop()
+@@ -422,6 +423,12 @@ static void mainLoop()
  
          int keyCode = inputGetInput();
  
