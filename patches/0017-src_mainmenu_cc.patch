@@ -1,0 +1,15 @@
+diff --git a/src/mainmenu.cc b/src/mainmenu.cc
+index de171402..259bc5da 100644
+--- a/src/mainmenu.cc
++++ b/src/mainmenu.cc
+@@ -483,8 +483,8 @@ static void mainMenuDrawButtonLabels(const MainMenuLayout& layout, const MainMen
+ {
+     MessageListItem msg;
+     ColorWithFlags fontSettings = COLOR_YELLOW_2 | DRAW_TEXT_FLAG_NONE;
+-    ColorWithFlags fontSettingsSFall = COLOR_BLACK | DRAW_TEXT_FLAG_NONE;
+-    configGetEnum<ColorWithFlags>(&gContentConfig, CONTENT_CONFIG_MAIN_MENU_SECTION, "big_font_color", &fontSettingsSFall, COLOR_BLACK | DRAW_TEXT_FLAG_NONE);
++    ColorWithFlags fontSettingsSFall = COLOR_FIRST | DRAW_TEXT_FLAG_NONE;
++    configGetEnum<ColorWithFlags>(&gContentConfig, CONTENT_CONFIG_MAIN_MENU_SECTION, "big_font_color", &fontSettingsSFall, COLOR_FIRST | DRAW_TEXT_FLAG_NONE);
+     if (fontSettingsSFall) {
+         fontSettings = static_cast<Color>(fontSettingsSFall & COLOR_LAST) | DRAW_TEXT_FLAG_NONE;
+     }

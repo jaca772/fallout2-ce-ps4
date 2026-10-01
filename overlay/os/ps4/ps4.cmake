@@ -70,6 +70,8 @@ set(PS4_SYSTEM_LIBRARIES
 target_sources(${EXECUTABLE_NAME} PUBLIC
     "src/platform/ps4/ps4.h"
     "src/platform/ps4/ps4.cc"
+    "src/platform/ps4/ps4_boot_menu.h"
+    "src/platform/ps4/ps4_boot_menu.cc"
     "src/platform/ps4/ps4_gamepad.h"
     "src/platform/ps4/ps4_gamepad.cc"
     "src/platform/ps4/ps4_video.h"

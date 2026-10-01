@@ -1,5 +1,5 @@
 diff --git a/src/win32.cc b/src/win32.cc
-index 811f233f..86634a4f 100644
+index 811f233f..0dcc3d78 100644
 --- a/src/win32.cc
 +++ b/src/win32.cc
 @@ -30,6 +30,10 @@
@@ -13,7 +13,7 @@ index 811f233f..86634a4f 100644
  namespace fallout {
  
  // 0x51E444 GNW95_isActive
-@@ -98,19 +102,75 @@ int main(int argc, char* argv[])
+@@ -98,19 +102,78 @@ int main(int argc, char* argv[])
      chdir(SDL_AndroidGetExternalStoragePath());
  #endif
  
@@ -42,7 +42,10 @@ index 811f233f..86634a4f 100644
 +    // credentials when creating the EGL window surface. This grants us the
 +    // necessary permission to initialize the compositor canvas, avoiding the
 +    // 0x80aa000b (SCE_SYSCORE_ERROR_PERMISSION) error.
-+    ps4MountData();
++    if (!ps4MountData()) {
++        ps4Log("[ps4] ps4MountData failed, exiting\n");
++        return EXIT_FAILURE;
++    }
 +
 +    // Create the early bootstrap window at the resolution the engine will use
 +    // (from fallout2.cfg), NOT a hardcoded 640x480. _GNW95_init_window's guard

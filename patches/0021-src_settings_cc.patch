@@ -1,8 +1,20 @@
 diff --git a/src/settings.cc b/src/settings.cc
-index 2fc76f70..3de4e69f 100644
+index 2fc76f70..80f0df3a 100644
 --- a/src/settings.cc
 +++ b/src/settings.cc
-@@ -307,6 +307,23 @@ bool settingsInit(bool isMapper, int argc, char** argv)
+@@ -150,7 +150,11 @@ void initSettingsRegistry(bool isMapper)
+     SETTING(language);
+     SETTING(scroll_lock);
+     SETTING(interrupt_walk);
++#ifdef __PS4__
++    SETTING_P(art_cache_size, clamp(32, 64));
++#else
+     SETTING_P(art_cache_size, clamp(32, 512));
++#endif
+     SETTING(color_cycling);
+     SETTING(cycle_speed_factor);
+     SETTING(hashing);
+@@ -307,6 +311,26 @@ bool settingsInit(bool isMapper, int argc, char** argv)
          descriptor.read();
      }
  
@@ -21,6 +33,9 @@ index 2fc76f70..3de4e69f 100644
 +    // archives (opened independently of these paths).
 +    settings.system.master_patches_path.clear();
 +    settings.system.critter_patches_path.clear();
++    if (settings.system.art_cache_size > 64) {
++        settings.system.art_cache_size = 64;
++    }
 +#endif
 +
      return true;

@@ -62,11 +62,40 @@ inline uint32_t toVout(uint32_t xrgb)
 
 bool ps4VideoInit(int srcW, int srcH)
 {
-    if (g.ready) {
-        ps4VideoShutdown();
-    }
     if (srcW <= 0 || srcH <= 0) {
         return false;
+    }
+
+    // If sceVideoOut and direct memory are already initialized, we only need
+    // to update the source resolution and rebuild the scaling LUTs.
+    if (g.ready && g.video >= 0) {
+        if (g.srcW == srcW && g.srcH == srcH && g.colLut != nullptr && g.rowLut != nullptr) {
+            return true;
+        }
+        g.srcW = srcW;
+        g.srcH = srcH;
+        free(g.colLut);
+        free(g.rowLut);
+        g.colLut = (int*)malloc(sizeof(int) * g.outW);
+        g.rowLut = (int*)malloc(sizeof(int) * g.outH);
+        if (g.colLut == nullptr || g.rowLut == nullptr) {
+            ps4Log("[ps4] LUT alloc FAILED in ps4VideoInit resize\n");
+            return false;
+        }
+        for (uint32_t ox = 0; ox < g.outW; ox++) {
+            int sx = (int)((uint64_t)ox * srcW / g.outW);
+            g.colLut[ox] = sx < srcW ? sx : srcW - 1;
+        }
+        for (uint32_t oy = 0; oy < g.outH; oy++) {
+            int sy = (int)((uint64_t)oy * srcH / g.outH);
+            g.rowLut[oy] = sy < srcH ? sy : srcH - 1;
+        }
+        ps4Log("[ps4] ps4VideoInit source resized to %dx%d (output %ux%u)\n", srcW, srcH, g.outW, g.outH);
+        return true;
+    }
+
+    if (g.ready) {
+        ps4VideoShutdown();
     }
 
     g.srcW = srcW;

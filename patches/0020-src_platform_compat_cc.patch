@@ -1,8 +1,8 @@
 diff --git a/src/platform_compat.cc b/src/platform_compat.cc
-index a9a6c10d..21b5cda0 100644
+index a9a6c10d..a7707368 100644
 --- a/src/platform_compat.cc
 +++ b/src/platform_compat.cc
-@@ -13,6 +13,7 @@
+@@ -13,10 +13,15 @@
  #include <sys/stat.h>
  #else
  #include <dirent.h>
@@ -10,17 +10,25 @@ index a9a6c10d..21b5cda0 100644
  #include <sys/stat.h>
  #include <unistd.h>
  #endif
-@@ -100,8 +101,21 @@ static void compatDirectoryEntryCacheClear()
+ 
++#ifdef __PS4__
++#include "platform/ps4/ps4.h"
++#endif
++
+ #ifdef _WIN32
+ #include <windows.h>
+ #ifdef _WIN64
+@@ -100,8 +105,21 @@ static void compatDirectoryEntryCacheClear()
  
  static void compat_prepare_native_path(char* nativePath, const char* path)
  {
 +#ifdef __PS4__
-+    // On PS4 we jailbreak to prison0 to access /data/fallout2. However, the cred
++    // On PS4 we jailbreak to prison0 to access game data in /data. However, the cred
 +    // swap breaks getcwd() (returns NULL / EINVAL), which in turn breaks the
 +    // toolchain libc's relative path resolution in fopen/open/opendir.
 +    // Prepend the absolute base path to all relative paths to bypass this.
 +    if (path[0] != '/' && path[0] != '\0') {
-+        snprintf(nativePath, COMPAT_MAX_PATH, "/data/fallout2/%s", path);
++        snprintf(nativePath, COMPAT_MAX_PATH, "%s/%s", ps4GetDataPath(), path);
 +    } else {
 +        strncpy(nativePath, path, COMPAT_MAX_PATH - 1);
 +        nativePath[COMPAT_MAX_PATH - 1] = '\0';
@@ -32,7 +40,7 @@ index a9a6c10d..21b5cda0 100644
      compat_windows_path_to_native(nativePath);
      compat_resolve_path(nativePath);
  }
-@@ -314,13 +328,19 @@ int compat_mkdir_recursive(const char* path)
+@@ -314,13 +332,19 @@ int compat_mkdir_recursive(const char* path)
          if (*sep == '\\' || *sep == '/') {
              char saved = *sep;
              *sep = '\0';
@@ -55,7 +63,7 @@ index a9a6c10d..21b5cda0 100644
  }
  
  bool compat_is_dir(const char* path)
-@@ -368,12 +388,92 @@ unsigned int compat_timeGetTime()
+@@ -368,12 +392,92 @@ unsigned int compat_timeGetTime()
  #ifdef _WIN32
      return timeGetTime();
  #else
@@ -151,7 +159,7 @@ index a9a6c10d..21b5cda0 100644
  FILE* compat_fopen(const char* path, const char* mode)
  {
      bool mayWrite = compatFileModeMayWrite(mode);
-@@ -384,6 +484,15 @@ FILE* compat_fopen(const char* path, const char* mode)
+@@ -384,6 +488,15 @@ FILE* compat_fopen(const char* path, const char* mode)
      char nativePath[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativePath, path);
      FILE* stream = fopen(nativePath, mode);

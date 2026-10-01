@@ -1,5 +1,5 @@
 diff --git a/src/svga.cc b/src/svga.cc
-index 28bd5a2a..4b9d3fa2 100644
+index 28bd5a2a..74e58fda 100644
 --- a/src/svga.cc
 +++ b/src/svga.cc
 @@ -22,6 +22,10 @@
@@ -20,10 +20,10 @@ index 28bd5a2a..4b9d3fa2 100644
 +#ifdef __PS4__
 +    // PS4: no SDL window. The engine's input/mouse path doesn't require a window
 +    // (dinput.cc fills the cursor from the gamepad directly). Bring up the native
-+    // sceVideoOut renderer once.
++    // sceVideoOut renderer once, or reconfigure if the engine's target resolution differs.
 +    (void)mode;
 +    (void)scale;
-+    if (gSdlTextureSurface == nullptr) {
++    if (gSdlTextureSurface == nullptr || gSdlTextureSurface->w != width || gSdlTextureSurface->h != height) {
 +        if (!createRenderer(width, height)) {
 +            destroyRenderer();
 +            return -1;
@@ -42,7 +42,7 @@ index 28bd5a2a..4b9d3fa2 100644
  }
  
  // 0x4CAF9C GNW95_init_DirectDraw
-@@ -353,12 +372,29 @@ int screenGetVisibleHeight()
+@@ -353,12 +372,33 @@ int screenGetVisibleHeight()
  // returns true if the game is running in fullscreen mode, false otherwise (including windowed fullscreen mode)
  bool screenIsExclusiveFullscreen()
  {
@@ -63,6 +63,10 @@ index 28bd5a2a..4b9d3fa2 100644
 +    if (!ps4VideoInit(width, height)) {
 +        return false;
 +    }
++    if (gSdlTextureSurface != nullptr) {
++        SDL_FreeSurface(gSdlTextureSurface);
++        gSdlTextureSurface = nullptr;
++    }
 +    gSdlTextureSurface = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_RGB888);
 +    if (gSdlTextureSurface == nullptr) {
 +        return false;
@@ -72,7 +76,7 @@ index 28bd5a2a..4b9d3fa2 100644
      gSdlRenderer = SDL_CreateRenderer(gSdlWindow, -1, 0);
      if (gSdlRenderer == nullptr) {
          return false;
-@@ -384,10 +420,14 @@ static bool createRenderer(int width, int height)
+@@ -384,10 +424,14 @@ static bool createRenderer(int width, int height)
      }
  
      return true;
@@ -87,7 +91,7 @@ index 28bd5a2a..4b9d3fa2 100644
      if (gSdlTextureSurface != nullptr) {
          SDL_FreeSurface(gSdlTextureSurface);
          gSdlTextureSurface = nullptr;
-@@ -470,6 +510,12 @@ void renderFpsCounter()
+@@ -470,6 +514,12 @@ void renderFpsCounter()
  
  void renderPresent()
  {

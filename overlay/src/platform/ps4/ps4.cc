@@ -19,6 +19,7 @@
 #include <jbc/libjbc.h>
 
 #include "platform_compat.h"
+#include "platform/ps4/ps4_boot_menu.h"
 
 // --- C++ static-init workaround (PS4/OpenOrbis) -----------------------------
 // The engine has many file-scope C++ objects whose constructors run before
@@ -44,10 +45,23 @@ extern "C" int __wrap___cxa_atexit(void (*)(void*), void*, void*)
 // -Wl,--wrap in CMakeLists) to ask LNC to close the app and return to the PS4
 // dashboard. sceSystemServiceLoadExec("exit", ...) is the OpenOrbis idiom for
 // this and never issues the forbidden syscall. Never returns.
+#include "platform/ps4/ps4_video.h"
+
 static void ps4EarlyLog(const char* fmt, ...);
+
+static jbc_cred g_ps4OrigCred;
+static bool g_ps4OrigCredValid = false;
 
 extern "C" [[noreturn]] void __wrap_exit(int status)
 {
+    ps4EarlyLog("[ps4] exit(%d) -> preparing clean exit\n", status);
+    chdir("/");
+    sync();
+    fallout::ps4VideoShutdown();
+    if (g_ps4OrigCredValid) {
+        ps4EarlyLog("[ps4] restoring original sandbox credentials\n");
+        jbc_set_cred(&g_ps4OrigCred);
+    }
     ps4EarlyLog("[ps4] exit(%d) -> sceSystemServiceLoadExec(exit)\n", status);
     const char* argv[] = { "exit", nullptr };
     int rc = sceSystemServiceLoadExec("exit", argv);
@@ -230,6 +244,21 @@ __attribute__((used, section(".init_array.00001"))) static void (*const ps4HeapI
 
 namespace fallout {
 
+static char g_ps4DataPath[512] = "/data/fallout2";
+
+const char* ps4GetDataPath()
+{
+    return g_ps4DataPath;
+}
+
+void ps4SetDataPath(const char* path)
+{
+    if (path != nullptr && *path != '\0') {
+        strncpy(g_ps4DataPath, path, sizeof(g_ps4DataPath) - 1);
+        g_ps4DataPath[sizeof(g_ps4DataPath) - 1] = '\0';
+    }
+}
+
 // Public klog helper (declared in ps4.h) for the shared startup code in
 // win32.cc. Same allocation-free debug-channel write as the file-scope
 // ps4EarlyLog used above.
@@ -254,7 +283,10 @@ void ps4Log(const char* fmt, ...)
 void ps4ReadDisplayConfig(int* outWidth, int* outHeight, int* outScale)
 {
     int resX = 640, resY = 480, scale = 1;
-    FILE* f = fopen(PS4_DATA_PATH "/fallout2.cfg", "r");
+    bool hasScreenSection = false;
+    char cfgPath[512];
+    snprintf(cfgPath, sizeof(cfgPath), "%s/fallout2.cfg", ps4GetDataPath());
+    FILE* f = fopen(cfgPath, "r");
     if (f != nullptr) {
         char line[256];
         bool inScreen = false;
@@ -263,6 +295,9 @@ void ps4ReadDisplayConfig(int* outWidth, int* outHeight, int* outScale)
             while (*p == ' ' || *p == '\t') p++;
             if (*p == '[') {
                 inScreen = (strncmp(p, "[screen]", 8) == 0);
+                if (inScreen) {
+                    hasScreenSection = true;
+                }
                 continue;
             }
             if (!inScreen) {
@@ -275,7 +310,33 @@ void ps4ReadDisplayConfig(int* outWidth, int* outHeight, int* outScale)
         }
         fclose(f);
     } else {
-        ps4Log("[ps4] display config: fallout2.cfg not readable, using 640x480\n");
+        ps4Log("[ps4] display config: fallout2.cfg not readable\n");
+    }
+
+    // Fallback: check f2_res.ini (used by total conversion mods like Sonora/Nevada)
+    if (!hasScreenSection) {
+        char resPath[512];
+        snprintf(resPath, sizeof(resPath), "%s/f2_res.ini", ps4GetDataPath());
+        FILE* rf = fopen(resPath, "r");
+        if (rf != nullptr) {
+            char line[256];
+            bool inMain = false;
+            while (fgets(line, sizeof(line), rf) != nullptr) {
+                char* p = line;
+                while (*p == ' ' || *p == '\t') p++;
+                if (*p == '[') {
+                    inMain = (strncmp(p, "[MAIN]", 6) == 0);
+                    continue;
+                }
+                if (!inMain) continue;
+                int v;
+                if (sscanf(p, "SCR_WIDTH=%d", &v) == 1) resX = v;
+                else if (sscanf(p, "SCR_HEIGHT=%d", &v) == 1) resY = v;
+                else if (sscanf(p, "SCALE_2X=%d", &v) == 1) scale = v + 1;
+            }
+            fclose(rf);
+            ps4Log("[ps4] display config fallback to f2_res.ini: %dx%d scale=%d\n", resX, resY, scale);
+        }
     }
     // Match the clamps settings.cc applies (resolution_x 640..7680,
     // resolution_y 480..4320, scale 1..4) so the bootstrap size can never diverge
@@ -541,7 +602,8 @@ static void ps4WriteDefaultControlsConfig(const char* path)
 
 void ps4ReadControlsConfig()
 {
-    const char* path = PS4_DATA_PATH "/ps4_controls.cfg";
+    char path[512];
+    snprintf(path, sizeof(path), "%s/ps4_controls.cfg", ps4GetDataPath());
     FILE* f = fopen(path, "r");
     if (f == nullptr) {
         // First run: keep defaults and drop a commented template to edit.
@@ -657,60 +719,38 @@ static void ps4ListDir(const char* dir)
 
 bool ps4MountData()
 {
-    jbc_cred cred;
-    jbc_get_cred(&cred);
+    jbc_get_cred(&g_ps4OrigCred);
+    g_ps4OrigCredValid = true;
+    jbc_cred cred = g_ps4OrigCred;
     jbc_jailbreak_cred(&cred);
     int cr = jbc_set_cred(&cred);
     ps4Log("[ps4] jbc jailbreak cred -> %d\n", cr);
 
-    // The user's data lives at /data/fallout2 as seen over GoldHEN FTP, but the
-    // jailbroken (real-root) view can differ (e.g. /data vs /user/data, or an
-    // external drive at /mnt/usb0). Probe likely roots and chdir into whichever
-    // actually contains master.dat.
-    static const char* const kCandidates[] = {
-        "/data/fallout2",
-        "/user/data/fallout2",
-        "/mnt/usb0/fallout2",
-        "/mnt/usb1/fallout2",
-    };
-    for (size_t i = 0; i < sizeof(kCandidates) / sizeof(kCandidates[0]); ++i) {
-        const char* dir = kCandidates[i];
-        char master[512];
-        snprintf(master, sizeof(master), "%s/master.dat", dir);
-        if (access(master, F_OK) == 0) {
-            if (chdir(dir) == 0) {
-                // The engine opens data files via RELATIVE paths against cwd
-                // (dbOpen("master.dat")). Our access() check above used an
-                // ABSOLUTE path, which says nothing about whether chdir()
-                // actually repoints relative lookups (OpenOrbis libc has known
-                // POSIX gaps here, and the cred-jailbreak's own cdir swap adds
-                // another way this could silently not stick). Verify BOTH
-                // getcwd() and an actual relative open before trusting chdir.
-                char cwdBuf[512];
-                const char* cwd = getcwd(cwdBuf, sizeof(cwdBuf));
-                ps4Log("[ps4] using data dir %s (getcwd=%s)\n", dir, cwd != nullptr ? cwd : "NULL");
-
-                FILE* f = compat_fopen("master.dat", "rb");
-                if (f != nullptr) {
-                    fclose(f);
-                    ps4Log("[ps4] relative fopen(master.dat) OK\n");
-                } else {
-                    ps4Log("[ps4] relative fopen(master.dat) FAILED errno=%d\n", errno);
-                }
-
-                return true;
-            }
-            ps4Log("[ps4] chdir(%s) failed errno=%d\n", dir, errno);
-        } else {
-            ps4Log("[ps4] no master.dat at %s (errno=%d)\n", dir, errno);
-        }
+    std::string chosenPath = ps4SelectGameFolder();
+    if (chosenPath.empty()) {
+        ps4Log("[ps4] ps4SelectGameFolder returned empty (no valid game found)\n");
+        return false;
     }
 
-    // Nothing matched — dump a few roots so klog shows where the data really is.
-    ps4ListDir("/data");
-    ps4ListDir("/user/data");
-    ps4ListDir("/mnt/usb0");
-    ps4Log("[ps4] game data not found in any candidate path\n");
+    ps4SetDataPath(chosenPath.c_str());
+
+    if (chdir(chosenPath.c_str()) == 0) {
+        char cwdBuf[512];
+        const char* cwd = getcwd(cwdBuf, sizeof(cwdBuf));
+        ps4Log("[ps4] using data dir %s (getcwd=%s)\n", chosenPath.c_str(), cwd != nullptr ? cwd : "NULL");
+
+        FILE* f = compat_fopen("master.dat", "rb");
+        if (f != nullptr) {
+            fclose(f);
+            ps4Log("[ps4] relative fopen(master.dat) OK\n");
+        } else {
+            ps4Log("[ps4] relative fopen(master.dat) FAILED errno=%d\n", errno);
+        }
+
+        return true;
+    }
+
+    ps4Log("[ps4] chdir(%s) failed errno=%d\n", chosenPath.c_str(), errno);
     return false;
 }
 

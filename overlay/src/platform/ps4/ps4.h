@@ -5,10 +5,10 @@
 
 namespace fallout {
 
-// Absolute path on the console where the user copies their Fallout 2 data
-// (master.dat, critter.dat, patch000.dat, data/, sound/, saves, config).
-// See CLAUDE.md "Filesystem layout on console".
-#define PS4_DATA_PATH "/data/fallout2"
+// Dynamic game data path on the console (e.g. /data/fallout2, /data/FalloutSonora).
+const char* ps4GetDataPath();
+void ps4SetDataPath(const char* path);
+#define PS4_DATA_PATH ps4GetDataPath()
 
 // Writes a printf-formatted line to the console debug channel (klog). Works
 // before SDL_Init and before the heap is up — unlike SDL_Log (its sink is only
