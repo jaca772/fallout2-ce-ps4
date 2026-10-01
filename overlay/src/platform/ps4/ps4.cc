@@ -116,6 +116,7 @@ void* sceLibcMspaceMalloc(void* mspace, size_t size);
 void sceLibcMspaceFree(void* mspace, void* ptr);
 void* sceLibcMspaceCalloc(void* mspace, size_t nelem, size_t size);
 void* sceLibcMspaceRealloc(void* mspace, void* ptr, size_t size);
+void* sceLibcMspaceMemalign(void* mspace, size_t alignment, size_t size);
 }
 
 static void* g_ps4Mspace = nullptr;
@@ -186,9 +187,31 @@ extern "C" void* __wrap_realloc(void* ptr, size_t size)
     return sceLibcMspaceRealloc(ps4Mspace(), ptr, size);
 }
 
-// NB: aligned_alloc / posix_memalign / memalign are defined in the toolchain's
-// libc.a on top of malloc/free (which are undefined imports there), so wrapping
-// malloc is enough to route them through our mspace — no separate wrappers.
+extern "C" void* __wrap_memalign(size_t alignment, size_t size)
+{
+    return sceLibcMspaceMemalign(ps4Mspace(), alignment, size);
+}
+
+extern "C" void* aligned_alloc(size_t alignment, size_t size)
+{
+    return sceLibcMspaceMemalign(ps4Mspace(), alignment, size);
+}
+
+extern "C" int __wrap_posix_memalign(void** memptr, size_t alignment, size_t size)
+{
+    if (memptr == nullptr) {
+        return 22; // EINVAL
+    }
+    if ((alignment % sizeof(void*) != 0) || (alignment & (alignment - 1)) != 0) {
+        return 22; // EINVAL
+    }
+    void* ptr = sceLibcMspaceMemalign(ps4Mspace(), alignment, size);
+    if (ptr == nullptr) {
+        return 12; // ENOMEM
+    }
+    *memptr = ptr;
+    return 0;
+}
 
 extern "C" void ps4HeapInit(void)
 {

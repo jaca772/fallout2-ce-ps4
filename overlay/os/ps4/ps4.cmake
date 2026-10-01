@@ -97,7 +97,7 @@ target_link_options(${EXECUTABLE_NAME} PRIVATE "LINKER:--wrap=_exit")
 # malloc reserves 2.5 GiB and maps it with the System flexible-memory variant,
 # which fails on this target and then null-derefs; a right-sized NON-system
 # mapping works. Every allocator symbol references below becomes __wrap_*.
-foreach(_ps4_alloc malloc free calloc realloc)
+foreach(_ps4_alloc malloc free calloc realloc memalign posix_memalign)
     target_link_options(${EXECUTABLE_NAME} PRIVATE "LINKER:--wrap=${_ps4_alloc}")
 endforeach()
 
