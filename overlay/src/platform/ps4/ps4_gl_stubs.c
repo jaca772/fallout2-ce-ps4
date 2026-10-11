@@ -3,7 +3,7 @@
 // Linking SDL2 statically pulls its GLES2 renderer + EGL video backend, whose
 // only external Sony symbols are scePigletSetConfigurationVSH plus 75 gl*/egl* symbols.
 // Because the PS4 port presents frames directly via native sceVideoOut, SDL video
-// is never initialised (so none of these functions is ever called). Defining empty
+// is never initialised (so none of these functions is ever called). Defining proper
 // stubs here allows linking without -lScePigletv2VSH, removing all proprietary Sony
 // module dependencies from the eboot.
 //
@@ -11,26 +11,27 @@
 
 int scePigletSetConfigurationVSH(const void* cfg) { (void)cfg; return 0; }
 
-void eglBindAPI(void) {}
-void eglChooseConfig(void) {}
-void eglCreateContext(void) {}
-void eglCreatePbufferSurface(void) {}
-void eglCreateWindowSurface(void) {}
-void eglDestroyContext(void) {}
-void eglDestroySurface(void) {}
-void eglGetConfigAttrib(void) {}
-void eglGetDisplay(void) {}
-void eglGetError(void) {}
-void eglGetProcAddress(void) {}
-void eglInitialize(void) {}
-void eglMakeCurrent(void) {}
-void eglQueryAPI(void) {}
-void eglQueryString(void) {}
-void eglSwapBuffers(void) {}
-void eglSwapInterval(void) {}
-void eglTerminate(void) {}
-void eglWaitGL(void) {}
-void eglWaitNative(void) {}
+int eglBindAPI(void) { return 0; }
+int eglChooseConfig(void) { return 0; }
+void* eglCreateContext(void) { return 0; }
+void* eglCreatePbufferSurface(void) { return 0; }
+void* eglCreateWindowSurface(void) { return 0; }
+int eglDestroyContext(void) { return 0; }
+int eglDestroySurface(void) { return 0; }
+int eglGetConfigAttrib(void) { return 0; }
+void* eglGetDisplay(void) { return 0; }
+int eglGetError(void) { return 0; }
+void* eglGetProcAddress(void) { return 0; }
+int eglInitialize(void) { return 0; }
+int eglMakeCurrent(void) { return 0; }
+int eglQueryAPI(void) { return 0; }
+const char* eglQueryString(void) { return 0; }
+int eglSwapBuffers(void) { return 0; }
+int eglSwapInterval(void) { return 0; }
+int eglTerminate(void) { return 0; }
+int eglWaitGL(void) { return 0; }
+int eglWaitNative(void) { return 0; }
+
 void glActiveTexture(void) {}
 void glAttachShader(void) {}
 void glBindAttribLocation(void) {}
@@ -41,12 +42,12 @@ void glBlendEquationSeparate(void) {}
 void glBlendFuncSeparate(void) {}
 void glBufferData(void) {}
 void glBufferSubData(void) {}
-void glCheckFramebufferStatus(void) {}
+unsigned int glCheckFramebufferStatus(void) { return 0; }
 void glClear(void) {}
 void glClearColor(void) {}
 void glCompileShader(void) {}
-void glCreateProgram(void) {}
-void glCreateShader(void) {}
+unsigned int glCreateProgram(void) { return 0; }
+unsigned int glCreateShader(void) { return 0; }
 void glDeleteBuffers(void) {}
 void glDeleteFramebuffers(void) {}
 void glDeleteProgram(void) {}
@@ -62,15 +63,15 @@ void glFramebufferTexture2D(void) {}
 void glGenBuffers(void) {}
 void glGenFramebuffers(void) {}
 void glGenTextures(void) {}
-void glGetAttribLocation(void) {}
-void glGetError(void) {}
+int glGetAttribLocation(void) { return -1; }
+unsigned int glGetError(void) { return 0; }
 void glGetIntegerv(void) {}
 void glGetProgramInfoLog(void) {}
 void glGetProgramiv(void) {}
 void glGetShaderInfoLog(void) {}
 void glGetShaderiv(void) {}
-void glGetString(void) {}
-void glGetUniformLocation(void) {}
+const unsigned char* glGetString(void) { return 0; }
+int glGetUniformLocation(void) { return -1; }
 void glLinkProgram(void) {}
 void glPixelStorei(void) {}
 void glReadPixels(void) {}

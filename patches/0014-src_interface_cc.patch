@@ -1,12 +1,13 @@
 diff --git a/src/interface.cc b/src/interface.cc
-index 2c295de6..7ae8db50 100644
+index 2c295de6..a42cda33 100644
 --- a/src/interface.cc
 +++ b/src/interface.cc
-@@ -2271,6 +2271,66 @@ static int _intface_item_reload()
+@@ -2271,6 +2271,68 @@ static int _intface_item_reload()
      return 0;
  }
  
 +// PS4 gamepad: reload the active-hand weapon directly, without first cycling the
++#ifdef __PS4__
 +// item action to "reload". Honors AP while in combat. Returns 0 on a successful
 +// reload, -1 otherwise (no weapon, not an ammo weapon, already full, or — in
 +// combat — not enough AP). Mirrors the RELOAD branch of _intface_use_item but
@@ -65,6 +66,7 @@ index 2c295de6..7ae8db50 100644
 +
 +    return 0;
 +}
++#endif
 +
  // internal helper for interfaceRenderCounter
  static void interfaceRenderCounterAnimationStep(unsigned char* src, unsigned char* dest, int delayMs, Rect* numbersRect, bool refreshMouse)

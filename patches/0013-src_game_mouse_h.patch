@@ -1,13 +1,15 @@
 diff --git a/src/game_mouse.h b/src/game_mouse.h
-index d1c2b230..9a30b8dc 100644
+index d1c2b230..2ce63d23 100644
 --- a/src/game_mouse.h
 +++ b/src/game_mouse.h
-@@ -78,6 +78,8 @@ constexpr inline MouseCursorType operator+(MouseCursorType lhs, MouseCursorType
+@@ -78,6 +78,10 @@ constexpr inline MouseCursorType operator+(MouseCursorType lhs, MouseCursorType
  }
  
  extern bool _gmouse_clicked_on_edge;
++#ifdef __PS4__
 +// PS4: set while the hold-Cross action menu modal is up (see game_mouse.cc).
 +extern bool gGameMouseActionMenuActive;
++#endif
  
  extern Object* gGameMouseBouncingCursor;
  extern Object* gGameMouseHexCursor;

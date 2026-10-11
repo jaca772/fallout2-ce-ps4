@@ -10,6 +10,7 @@
 #ifdef __PS4__
 
 #include <SDL.h>
+#include "platform/ps4/ps4.h"
 
 namespace fallout {
 
@@ -23,12 +24,6 @@ void ps4VideoShutdown();
 // Upscale `frame` (the engine's RGB888 software surface) into the current flip
 // buffer, composite any staged movie overlay, and flip. vsync-paced.
 void ps4VideoPresent(SDL_Surface* frame);
-
-enum Ps4ScaleMode {
-    PS4_SCALE_LETTERBOX = 0, // Preserve aspect ratio with pillarbox/letterbox black bars (default)
-    PS4_SCALE_FILL = 1,      // Stretch to fill 100% of 16:9 output display
-    PS4_SCALE_INTEGER = 2,   // Center with nearest integer scale factor
-};
 
 // Set/get the display scaling mode.
 void ps4VideoSetScaleMode(Ps4ScaleMode mode);

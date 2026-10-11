@@ -67,11 +67,13 @@ set(PS4_SYSTEM_LIBRARIES
 # Target properties / linker flags below are order-independent, so they live
 # here (in the overlay) instead of inline in the top-level CMakeLists — that
 # keeps the CMakeLists PS4 hook down to a bare include().
-target_sources(${EXECUTABLE_NAME} PUBLIC
+target_sources(${EXECUTABLE_NAME} PRIVATE
     "src/platform/ps4/ps4.h"
     "src/platform/ps4/ps4.cc"
     "src/platform/ps4/ps4_boot_menu.h"
     "src/platform/ps4/ps4_boot_menu.cc"
+    "src/platform/ps4/ps4_combat_assist.h"
+    "src/platform/ps4/ps4_combat_assist.cc"
     "src/platform/ps4/ps4_gamepad.h"
     "src/platform/ps4/ps4_gamepad.cc"
     "src/platform/ps4/ps4_video.h"
@@ -99,7 +101,7 @@ target_link_options(${EXECUTABLE_NAME} PRIVATE "LINKER:--wrap=_exit")
 # malloc reserves 2.5 GiB and maps it with the System flexible-memory variant,
 # which fails on this target and then null-derefs; a right-sized NON-system
 # mapping works. Every allocator symbol references below becomes __wrap_*.
-foreach(_ps4_alloc malloc free calloc realloc memalign posix_memalign)
+foreach(_ps4_alloc malloc free calloc realloc memalign posix_memalign aligned_alloc)
     target_link_options(${EXECUTABLE_NAME} PRIVATE "LINKER:--wrap=${_ps4_alloc}")
 endforeach()
 

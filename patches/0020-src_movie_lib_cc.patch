@@ -1,25 +1,69 @@
 diff --git a/src/movie_lib.cc b/src/movie_lib.cc
-index 0ad48743..56c5858e 100644
+index 0ad48743..c9ae1ac2 100644
 --- a/src/movie_lib.cc
 +++ b/src/movie_lib.cc
+@@ -358,7 +358,7 @@ static int sync_wait_quanta;
+ static int rm_track_bit;
+ 
+ // 0x6B3ADC sync_time
+-static int sync_time;
++static int64_t sync_time;
+ 
+ // 0x6B3AE0 io_read
+ static MveReadFunc* mve_read_func;
 @@ -612,9 +612,9 @@ static int syncWait()
  
      late = 0;
      if (sync_active) {
 -        while ((sync_time + 1000 * compat_timeGetTime()) < 0) {
-+        while ((sync_time + 1000 * (int)compat_timeGetTime()) < 0) {
++        while ((sync_time + (int64_t)1000 * compat_timeGetTime()) < 0) {
              late = 1;
 -            delay_ms(-(sync_time + 1000 * compat_timeGetTime()) / 1000 - 3);
-+            delay_ms(-(sync_time + 1000 * (int)compat_timeGetTime()) / 1000 - 3);
++            delay_ms((int)(-(sync_time + (int64_t)1000 * compat_timeGetTime()) / 1000 - 3));
          }
          sync_time += sync_wait_quanta;
      }
+@@ -834,7 +834,7 @@ static int syncInit(int rate, int resolution)
+ static void syncReset(int quanta)
+ {
+     sync_active = 1;
+-    sync_time = -1000 * compat_timeGetTime() + quanta;
++    sync_time = -(int64_t)1000 * compat_timeGetTime() + quanta;
+ }
+ 
+ void MVE_rmResetSync()
 @@ -877,7 +877,7 @@ static int _MVE_sndConfigure(int a1, int a2, int a3, int a4, int a5, int a6)
  static void MVE_syncSync()
  {
      if (sync_active) {
 -        while (sync_time + 1000 * compat_timeGetTime() < 0) {
-+        while (sync_time + 1000 * (int)compat_timeGetTime() < 0) {
++        while (sync_time + (int64_t)1000 * compat_timeGetTime() < 0) {
          }
      }
  }
+@@ -1038,8 +1038,8 @@ static void _MVE_sndSync()
+ // 0x4F59B0 syncWaitLevel
+ static int syncWaitLevel(int wait)
+ {
+-    int deadline;
+-    int diff;
++    int64_t deadline;
++    int64_t diff;
+ 
+     if (!sync_active) {
+         return 0;
+@@ -1047,11 +1047,11 @@ static int syncWaitLevel(int wait)
+ 
+     deadline = sync_time + wait;
+     do {
+-        diff = deadline + 1000 * compat_timeGetTime();
++        diff = deadline + (int64_t)1000 * compat_timeGetTime();
+         if (diff < 0) {
+-            delay_ms(-diff / 1000 - 3);
++            delay_ms((int)(-diff / 1000 - 3));
+         }
+-        diff = deadline + 1000 * compat_timeGetTime();
++        diff = deadline + (int64_t)1000 * compat_timeGetTime();
+     } while (diff < 0);
+ 
+     sync_time += sync_wait_quanta;

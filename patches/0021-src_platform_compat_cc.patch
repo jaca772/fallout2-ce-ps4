@@ -1,5 +1,5 @@
 diff --git a/src/platform_compat.cc b/src/platform_compat.cc
-index a9a6c10d..ac353e91 100644
+index a9a6c10d..eecb1ebd 100644
 --- a/src/platform_compat.cc
 +++ b/src/platform_compat.cc
 @@ -13,10 +13,15 @@
@@ -18,7 +18,16 @@ index a9a6c10d..ac353e91 100644
  #ifdef _WIN32
  #include <windows.h>
  #ifdef _WIN64
-@@ -100,12 +105,51 @@ static void compatDirectoryEntryCacheClear()
+@@ -24,8 +29,6 @@
+ #else
+ #include <mmsystem.h>
+ #endif
+-#else
+-#include <chrono>
+ #endif
+ 
+ #include <SDL.h>
+@@ -100,12 +103,51 @@ static void compatDirectoryEntryCacheClear()
  
  static void compat_prepare_native_path(char* nativePath, const char* path)
  {
@@ -70,7 +79,7 @@ index a9a6c10d..ac353e91 100644
  int compat_stricmp(const char* string1, const char* string2)
  {
      return SDL_strcasecmp(string1, string2);
-@@ -288,6 +332,14 @@ int compat_mkdir(const char* path)
+@@ -288,6 +330,14 @@ int compat_mkdir(const char* path)
      char nativePath[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativePath, path);
  
@@ -85,30 +94,30 @@ index a9a6c10d..ac353e91 100644
  #ifdef _WIN32
      int rc = mkdir(nativePath);
  #else
-@@ -314,13 +366,19 @@ int compat_mkdir_recursive(const char* path)
+@@ -314,13 +364,19 @@ int compat_mkdir_recursive(const char* path)
          if (*sep == '\\' || *sep == '/') {
              char saved = *sep;
              *sep = '\0';
 -            if (compat_mkdir(pathCopy) < 0) {
 -                break;
 +            int rc = compat_mkdir(pathCopy);
-+            // Continue even if the directory already exists (EEXIST).
-+            // Only stop on a real error (e.g. permission denied).
-+            if (rc < 0 && errno != EEXIST) {
-+                *sep = saved;
-+                return rc;
++            if (rc < 0) {
++                if (errno != EEXIST || !compat_is_dir(pathCopy)) {
++                    *sep = saved;
++                    return rc;
++                }
              }
              *sep = saved;
          }
      }
 -    return compat_mkdir(path);
 +    int rc = compat_mkdir(path);
-+    // Success if created or already existed.
-+    return (rc < 0 && errno == EEXIST) ? 0 : rc;
++    // Success if created or already existed as a directory.
++    return (rc < 0 && errno == EEXIST && compat_is_dir(path)) ? 0 : rc;
  }
  
  bool compat_is_dir(const char* path)
-@@ -368,12 +426,92 @@ unsigned int compat_timeGetTime()
+@@ -368,12 +424,92 @@ unsigned int compat_timeGetTime()
  #ifdef _WIN32
      return timeGetTime();
  #else
@@ -204,7 +213,7 @@ index a9a6c10d..ac353e91 100644
  FILE* compat_fopen(const char* path, const char* mode)
  {
      bool mayWrite = compatFileModeMayWrite(mode);
-@@ -383,7 +521,25 @@ FILE* compat_fopen(const char* path, const char* mode)
+@@ -383,7 +519,25 @@ FILE* compat_fopen(const char* path, const char* mode)
  
      char nativePath[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativePath, path);
@@ -230,7 +239,7 @@ index a9a6c10d..ac353e91 100644
      if (mayWrite && stream != nullptr) {
          compatDirectoryEntryCacheClear();
      }
-@@ -399,6 +555,15 @@ gzFile compat_gzopen(const char* path, const char* mode)
+@@ -399,6 +553,15 @@ gzFile compat_gzopen(const char* path, const char* mode)
  
      char nativePath[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativePath, path);
@@ -246,7 +255,7 @@ index a9a6c10d..ac353e91 100644
      gzFile stream = gzopen(nativePath, mode);
      if (mayWrite && stream != nullptr) {
          compatDirectoryEntryCacheClear();
-@@ -442,6 +607,15 @@ int compat_remove(const char* path)
+@@ -442,6 +605,15 @@ int compat_remove(const char* path)
  
      char nativePath[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativePath, path);
@@ -262,7 +271,7 @@ index a9a6c10d..ac353e91 100644
      int rc = remove(nativePath);
      if (rc == 0) {
          compatDirectoryEntryCacheClear();
-@@ -459,6 +633,14 @@ int compat_rename(const char* oldFileName, const char* newFileName)
+@@ -459,6 +631,14 @@ int compat_rename(const char* oldFileName, const char* newFileName)
      char nativeNewFileName[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativeNewFileName, newFileName);
  

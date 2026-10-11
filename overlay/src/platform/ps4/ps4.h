@@ -57,58 +57,59 @@ enum {
     PS4_MELEE_ATTACK = 2,   // run up to the target and then attack
 };
 
+enum Ps4ScaleMode {
+    PS4_SCALE_LETTERBOX = 0, // Preserve aspect ratio with pillarbox/letterbox black bars (default)
+    PS4_SCALE_FILL = 1,      // Stretch to fill 100% of 16:9 output display
+    PS4_SCALE_INTEGER = 2,   // Center with nearest integer scale factor
+};
+
 // User-tunable gamepad settings, loaded from /data/fallout2/ps4_controls.cfg so
 // they can be edited over FTP without rebuilding. See ps4ReadControlsConfig.
 struct Ps4ControlsConfig {
-    float touchSensitivity;  // DS4 touchpad base gain when moving SLOWLY (precision)
-    float touchAccel;        // extra gain per unit of finger speed (0 = linear/off)
-    float touchSmoothing;    // 0..0.9 low-pass on finger motion (higher = smoother/laggier)
-    float touchDeadzone;     // ignore finger moves smaller than this (kills drift)
-    float cursorSpeed;       // left-stick cursor px/sec (combat/menus)
-    float cursorSpeedBoost;  // ...with R1 held
-    float walkDeadzone;      // left-stick magnitude below which we don't walk
-    float runThreshold;      // ...at/above which we run instead of walk
-    int cameraDeadzoneX;     // camera-follow dead-zone half-width  (px)
-    int cameraDeadzoneY;     // camera-follow dead-zone half-height (px)
-    int worldRightStick;     // right-stick role in world: PS4_WRS_CAMERA/CURSOR/OFF
-    // Advanced feel tuning (kept at struct end for positional init).
-    int walkProjectTiles;      // hexes to project each walk step (smoothness vs response)
-    int runSettleMs;           // ms before the first walk step (helps run detection)
-    float touchMaxGain;        // cap on touchpad acceleration gain
-    int touchTapMs;            // max touch duration counted as a tap/click
-    int touchTapMove;          // max touch movement counted as a tap/click
-    int dpadRepeatMs;          // D-pad arrow-key repeat interval (ms)
-    float cameraPanThreshold;  // stick deflection needed to pan (camera/centered)
+    float touchSensitivity = 0.25f;  // DS4 touchpad base gain when moving SLOWLY (precision)
+    float touchAccel = 0.001f;        // extra gain per unit of finger speed (0 = linear/off)
+    float touchSmoothing = 0.40f;    // 0..0.9 low-pass on finger motion (higher = smoother/laggier)
+    float touchDeadzone = 2.0f;     // ignore finger moves smaller than this (kills drift)
+    float cursorSpeed = 450.0f;       // left-stick cursor px/sec (combat/menus)
+    float cursorSpeedBoost = 900.0f;  // ...with R1 held
+    float walkDeadzone = 0.30f;      // left-stick magnitude below which we don't walk
+    float runThreshold = 0.50f;      // ...at/above which we run instead of walk
+    int cameraDeadzoneX = 100;     // camera-follow dead-zone half-width  (px)
+    int cameraDeadzoneY = 75;     // camera-follow dead-zone half-height (px)
+    int worldRightStick = PS4_WRS_CURSOR;     // right-stick role in world: PS4_WRS_CAMERA/CURSOR/OFF
+    // Advanced feel tuning
+    int walkProjectTiles = 2;      // hexes to project each walk step (smoothness vs response)
+    int runSettleMs = 50;           // ms before the first walk step (helps run detection)
+    float touchMaxGain = 4.0f;        // cap on touchpad acceleration gain
+    int touchTapMs = 200;            // max touch duration counted as a tap/click
+    int touchTapMove = 40;          // max touch movement counted as a tap/click
+    int dpadRepeatMs = 150;          // D-pad arrow-key repeat interval (ms)
+    float cameraPanThreshold = 0.40f;  // stick deflection needed to pan (camera/centered)
     // Button remapping (each is a PS4_ACT_* value).
-    int actCross;      // Cross (X)
-    int actCircle;     // Circle (O)
-    int actSquare;     // Square
-    int actTriangle;   // Triangle
-    int actL1;         // L1
-    int actR1;         // R1
-    int actL3;         // left stick click
-    int actR3;         // right stick click
-    int actShare;      // Share
-    int actOptions;    // Options (read via native scePad)
-    // World left-stick role (PS4_WRS_*). Kept at struct end for positional init.
-    // Default WALK's replacement is CENTERED; see ps4.cc. Right stick default CURSOR.
-    int worldLeftStick;
-    // Aim assist (hold L2). combatAutoAim: snap/target in combat. worldAutoAim:
-    // snap to people to talk to / interact out of combat. autoAimWholeMap: 1 =
-    // consider the whole map, 0 = only targets in the player's viewport.
-    int combatAutoAim;
-    int worldAutoAim;
-    int autoAimWholeMap;
-    int autoAimCenterCamera; // 1 = pan the camera to centre the aimed target
-    int meleeApproach;       // PS4_MELEE_* : out-of-range melee -> run up (+ attack)
-    int lootAssist;          // 1 = L2+L1 snaps onto containers/corpses/doors
-    int lootSnapDistance;    // loot-assist reach in hexes
-    int lootSkipEmpty;       // 1 = skip empty containers/corpses when cycling
-    int circleCloseAll;      // 1 = Circle closes EVERY menu (incl. inventory/barter/
-                             //     loot); 0 = Circle stays RMB in those (inspect items)
-    int scaleMode;           // Ps4ScaleMode (0 = letterbox/pillarbox, 1 = fill 16:9, 2 = integer)
-    float stickDeadzone;     // radial analog stick deadzone (0.05..0.70, default 0.15)
-    float stickCurve;        // analog response curve exponent (1.0..3.0, default 1.50)
+    int actCross = PS4_ACT_LMB;      // Cross (X)
+    int actCircle = PS4_ACT_RMB;     // Circle (O)
+    int actSquare = PS4_ACT_SKILLDEX;     // Square
+    int actTriangle = PS4_ACT_CHARSHEET;   // Triangle
+    int actL1 = PS4_ACT_INVENTORY;         // L1
+    int actR1 = PS4_ACT_RELOAD;         // R1
+    int actL3 = PS4_ACT_SWAPHANDS;         // left stick click
+    int actR3 = PS4_ACT_COMBAT;         // right stick click
+    int actShare = PS4_ACT_PIPBOY;      // Share
+    int actOptions = PS4_ACT_ESC;    // Options (read via native scePad)
+    int worldLeftStick = PS4_WRS_CENTERED;
+    // Aim assist (hold L2)
+    int combatAutoAim = 1;
+    int worldAutoAim = 1;
+    int autoAimWholeMap = 0;
+    int autoAimCenterCamera = 0; // 1 = pan the camera to centre the aimed target
+    int meleeApproach = PS4_MELEE_APPROACH;       // PS4_MELEE_* : out-of-range melee -> run up (+ attack)
+    int lootAssist = 1;          // 1 = L2+L1 snaps onto containers/corpses/doors
+    int lootSnapDistance = 20;    // loot-assist reach in hexes
+    int lootSkipEmpty = 1;       // 1 = skip empty containers/corpses when cycling
+    int circleCloseAll = 0;      // 1 = Circle closes EVERY menu
+    int scaleMode = PS4_SCALE_LETTERBOX;           // Ps4ScaleMode (0 = letterbox/pillarbox, 1 = fill 16:9, 2 = integer)
+    float stickDeadzone = 0.15f;     // radial analog stick deadzone (0.05..0.70, default 0.15)
+    float stickCurve = 1.50f;        // analog response curve exponent (1.0..3.0, default 1.50)
 };
 
 extern Ps4ControlsConfig g_ps4Controls;

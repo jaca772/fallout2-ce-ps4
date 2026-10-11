@@ -12,6 +12,7 @@
 #include <stdio.h>
 
 #include "platform/ps4/ps4.h"
+#include "platform/ps4/ps4_combat_assist.h"
 
 #include <orbis/Pad.h>
 #include <orbis/UserService.h>

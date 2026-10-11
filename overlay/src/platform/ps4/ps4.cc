@@ -208,10 +208,13 @@ extern "C" void* __wrap_memalign(size_t alignment, size_t size)
     return sceLibcMspaceMemalign(ps4Mspace(), alignment, size);
 }
 
-extern "C" void* aligned_alloc(size_t alignment, size_t size)
+extern "C" void* __wrap_aligned_alloc(size_t alignment, size_t size)
 {
     return sceLibcMspaceMemalign(ps4Mspace(), alignment, size);
 }
+
+extern "C" void* aligned_alloc(size_t alignment, size_t size)
+    __attribute__((weak, alias("__wrap_aligned_alloc")));
 
 extern "C" int __wrap_posix_memalign(void** memptr, size_t alignment, size_t size)
 {
@@ -355,51 +358,9 @@ void ps4ReadDisplayConfig(int* outWidth, int* outHeight, int* outScale)
     ps4Log("[ps4] display config: %dx%d scale=%d\n", resX, resY, scale);
 }
 
-// User-tunable gamepad settings with sensible defaults. Overridden by
-// /data/fallout2/ps4_controls.cfg (see ps4ReadControlsConfig).
-Ps4ControlsConfig g_ps4Controls = {
-    /* touchSensitivity */ 0.25f,
-    /* touchAccel       */ 0.001f,
-    /* touchSmoothing   */ 0.40f,
-    /* touchDeadzone    */ 2.0f,
-    /* cursorSpeed      */ 450.0f,
-    /* cursorSpeedBoost */ 900.0f,
-    /* walkDeadzone     */ 0.30f,
-    /* runThreshold     */ 0.50f,
-    /* cameraDeadzoneX  */ 100,
-    /* cameraDeadzoneY  */ 75,
-    /* worldRightStick  */ PS4_WRS_CURSOR,
-    /* walkProjectTiles   */ 2,
-    /* runSettleMs        */ 50,
-    /* touchMaxGain       */ 4.0f,
-    /* touchTapMs         */ 200,
-    /* touchTapMove       */ 40,
-    /* dpadRepeatMs       */ 150,
-    /* cameraPanThreshold */ 0.40f,
-    /* actCross    */ PS4_ACT_LMB,
-    /* actCircle   */ PS4_ACT_RMB,
-    /* actSquare   */ PS4_ACT_SKILLDEX,
-    /* actTriangle */ PS4_ACT_CHARSHEET,
-    /* actL1       */ PS4_ACT_INVENTORY,
-    /* actR1       */ PS4_ACT_RELOAD,
-    /* actL3       */ PS4_ACT_SWAPHANDS,
-    /* actR3       */ PS4_ACT_COMBAT,
-    /* actShare    */ PS4_ACT_PIPBOY,
-    /* actOptions  */ PS4_ACT_ESC,
-    /* worldLeftStick */ PS4_WRS_CENTERED,
-    /* combatAutoAim   */ 1,
-    /* worldAutoAim    */ 1,
-    /* autoAimWholeMap */ 0,
-    /* autoAimCenterCamera */ 0,
-    /* meleeApproach */ PS4_MELEE_APPROACH,
-    /* lootAssist */ 1,
-    /* lootSnapDistance */ 20,
-    /* lootSkipEmpty */ 1,
-    /* circleCloseAll */ 0,
-    /* scaleMode */ PS4_SCALE_LETTERBOX,
-    /* stickDeadzone */ 0.15f,
-    /* stickCurve */ 1.50f,
-};
+// User-tunable gamepad settings with sensible defaults (see Ps4ControlsConfig
+// default member initializers). Overridden by /data/fallout2/ps4_controls.cfg.
+Ps4ControlsConfig g_ps4Controls;
 
 static const char* ps4ScaleModeName(int m)
 {

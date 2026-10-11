@@ -1,25 +1,19 @@
 diff --git a/src/dinput.cc b/src/dinput.cc
-index 465f59b4..c440c117 100644
+index 465f59b4..728225da 100644
 --- a/src/dinput.cc
 +++ b/src/dinput.cc
-@@ -5,9 +5,16 @@
- #include "sfall_kb_helpers.h"
+@@ -6,6 +6,10 @@
  #include "svga.h"
  #include "win32.h"
-+#include "input.h"
-+#include "kb.h"
-+
+ 
 +#ifdef __PS4__
 +#include "platform/ps4/ps4_gamepad.h"
 +#endif
- 
++
  namespace fallout {
  
-+
  static int gMouseWheelDeltaX = 0;
- static int gMouseWheelDeltaY = 0;
- static int mouseWindowMappingWindowWidth = 0;
-@@ -57,6 +64,14 @@ bool mouseDeviceInitMode()
+@@ -57,6 +61,14 @@ bool mouseDeviceInitMode()
      // "Absolute mode" means cursor position is controlled by the OS, and we read it directly.
      // Mouse sensitivity settings can only apply in relative mode.
  
@@ -34,7 +28,7 @@ index 465f59b4..c440c117 100644
      bool wantsRelativeMode = gProgramIsActive && (screenIsExclusiveFullscreen() || settings.screen.mouse_lock);
  
      if (wantsRelativeMode) {
-@@ -71,6 +86,7 @@ bool mouseDeviceInitMode()
+@@ -71,6 +83,7 @@ bool mouseDeviceInitMode()
      mouseRelativeMode = false;
      mouseDeviceRefreshWindowMapping();
      return true;
@@ -42,7 +36,7 @@ index 465f59b4..c440c117 100644
  }
  
  // 0x4E04E8
-@@ -95,14 +111,30 @@ bool mouseDeviceGetData(MouseData* mouseState)
+@@ -95,14 +108,30 @@ bool mouseDeviceGetData(MouseData* mouseState)
      // TODO: Move mouse events processing into `GNW95_process_message` and
      // update mouse position manually.
      SDL_PumpEvents();
@@ -73,7 +67,7 @@ index 465f59b4..c440c117 100644
      mouseState->wheelX = gMouseWheelDeltaX;
      mouseState->wheelY = gMouseWheelDeltaY;
  
-@@ -112,6 +144,8 @@ bool mouseDeviceGetData(MouseData* mouseState)
+@@ -112,6 +141,8 @@ bool mouseDeviceGetData(MouseData* mouseState)
      return true;
  }
  
@@ -82,7 +76,7 @@ index 465f59b4..c440c117 100644
  // 0x4E05A8
  bool keyboardDeviceAcquire()
  {
-@@ -142,12 +176,18 @@ bool keyboardDeviceGetData(KeyboardData* keyboardData)
+@@ -142,12 +173,18 @@ bool keyboardDeviceGetData(KeyboardData* keyboardData)
  bool mouseDeviceInit()
  {
      mouseDeviceRefreshWindowMapping();
