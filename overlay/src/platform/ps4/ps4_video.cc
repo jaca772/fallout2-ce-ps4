@@ -341,36 +341,29 @@ static void ps4CompositeMovie(uint32_t* fb)
         movieColLut[x] = sx < g.movieW ? sx : g.movieW - 1;
     }
 
+    int startX = dx0 < 0 ? 0 : dx0;
+    int endX = dx0 + dw > (int)g.outW ? (int)g.outW : dx0 + dw;
+    if (endX <= startX) return;
+
+    static uint32_t s_movieRow[1920];
     int prevSrcY = -1;
     for (int y = 0; y < dh; y++) {
         int py = dy0 + y;
         if (py < 0 || py >= (int)g.outH) continue;
+
         int srcY = (int)((int64_t)y * g.movieH / dh);
         if (srcY >= g.movieH) srcY = g.movieH - 1;
 
-        uint32_t* drow = fb + (size_t)py * g.pitch;
-
-        if (srcY == prevSrcY && y > 0 && py > 0) {
-            int prevPy = dy0 + y - 1;
-            if (prevPy >= 0 && prevPy < (int)g.outH) {
-                uint32_t* prevRow = fb + (size_t)prevPy * g.pitch;
-                int startX = dx0 < 0 ? 0 : dx0;
-                int endX = dx0 + dw > (int)g.outW ? (int)g.outW : dx0 + dw;
-                if (endX > startX) {
-                    memcpy(drow + startX, prevRow + startX, (size_t)(endX - startX) * sizeof(uint32_t));
-                }
-                continue;
+        if (srcY != prevSrcY) {
+            const uint32_t* srow = g.movie + (size_t)srcY * g.movieW;
+            for (int px = startX; px < endX; px++) {
+                int x = px - dx0;
+                int srcX = x < 1920 ? movieColLut[x] : (int)((int64_t)x * g.movieW / dw);
+                s_movieRow[px - startX] = toVout(srow[srcX]);
             }
+            prevSrcY = srcY;
         }
-        prevSrcY = srcY;
-
-        const uint32_t* srow = g.movie + (size_t)srcY * g.movieW;
-        for (int x = 0; x < dw; x++) {
-            int px = dx0 + x;
-            if (px < 0 || px >= (int)g.outW) continue;
-            int srcX = x < 1920 ? movieColLut[x] : (int)((int64_t)x * g.movieW / dw);
-            drow[px] = toVout(srow[srcX]); // movies are opaque
-        }
+        memcpy(fb + (size_t)py * g.pitch + startX, s_movieRow, (size_t)(endX - startX) * sizeof(uint32_t));
     }
 }
 
@@ -396,6 +389,8 @@ void ps4VideoPresent(SDL_Surface* frame)
         }
     }
 
+    uint64_t t0 = sceKernelGetProcessTime();
+
     uint32_t* fb = (uint32_t*)g.fb[g.activeIdx];
     const uint32_t* src = (const uint32_t*)frame->pixels;
     int srcPitch = frame->pitch / 4;
@@ -405,21 +400,28 @@ void ps4VideoPresent(SDL_Surface* frame)
                              g.movieDst.w >= g.srcW && g.movieDst.h >= g.srcH;
 
     if (!isFullscreenMovie) {
+        static uint32_t s_rowBuf[1920];
         for (uint32_t oy = 0; oy < g.dstH; oy++) {
             uint32_t* drow = fb + (size_t)(g.dstY + oy) * g.pitch + g.dstX;
-            if (oy > 0 && g.rowLut[oy] == g.rowLut[oy - 1]) {
-                memcpy(drow, drow - g.pitch, (size_t)g.dstW * sizeof(uint32_t));
-                continue;
+            if (oy == 0 || g.rowLut[oy] != g.rowLut[oy - 1]) {
+                const uint32_t* srow = src + (size_t)g.rowLut[oy] * srcPitch;
+                const int* col = g.colLut;
+                for (uint32_t ox = 0; ox < g.dstW; ox++) {
+                    s_rowBuf[ox] = toVout(srow[col[ox]]);
+                }
             }
-            const uint32_t* srow = src + (size_t)g.rowLut[oy] * srcPitch;
-            const int* col = g.colLut;
-            for (uint32_t ox = 0; ox < g.dstW; ox++) {
-                drow[ox] = toVout(srow[col[ox]]);
-            }
+            memcpy(drow, s_rowBuf, (size_t)g.dstW * sizeof(uint32_t));
         }
     }
 
     ps4CompositeMovie(fb);
+
+    uint64_t t1 = sceKernelGetProcessTime();
+    static uint32_t s_frameLogCounter = 0;
+    if (++s_frameLogCounter >= 120) {
+        s_frameLogCounter = 0;
+        ps4Log("[ps4] upscale frame time: %lu us\n", (unsigned long)(t1 - t0));
+    }
 
     sceVideoOutSubmitFlip(g.video, g.activeIdx, ORBIS_VIDEO_OUT_FLIP_VSYNC, g.frameID);
 
