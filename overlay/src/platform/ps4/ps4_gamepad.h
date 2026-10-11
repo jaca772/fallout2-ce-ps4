@@ -7,6 +7,26 @@
 
 namespace fallout {
 
+struct Object;
+
+enum Ps4GamepadActionType {
+    PS4_PAD_ACTION_NONE = 0,
+    PS4_PAD_ACTION_ATTACK,
+    PS4_PAD_ACTION_AIMED_ATTACK,
+    PS4_PAD_ACTION_MELEE_APPROACH,
+    PS4_PAD_ACTION_LOOT_INTERACT,
+    PS4_PAD_ACTION_RELOAD,
+};
+
+struct Ps4GamepadPendingAction {
+    Ps4GamepadActionType type;
+    Object* target;
+    int targetId;
+    int targetPid;
+    int targetElevation;
+    int param;
+};
+
 // PS4 DS4 gamepad -> mouse/keys layer. All the controls logic lives in
 // ps4_gamepad.cc; dinput.cc only calls these hooks under __PS4__.
 
@@ -31,6 +51,16 @@ void ps4GamepadFillMouse(MouseData* mouseState);
 // Drive the player with the left stick (continuous march) when world_left_stick
 // is set to walk. Called once per frame from mainLoop().
 void ps4GamepadWorldMove();
+
+// Queue a gamepad action for deferred execution outside of input polling.
+bool ps4GamepadQueueAction(Ps4GamepadActionType type, Object* target, int param);
+
+// Execute any pending gamepad actions. Called from safe points in mainLoop()
+// and _combat_input().
+void ps4GamepadProcessPendingActions();
+
+// Clear the pending action queue (e.g. on map/mode change).
+void ps4GamepadClearPendingActions();
 
 } // namespace fallout
 

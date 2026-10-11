@@ -1,5 +1,5 @@
 diff --git a/src/main.cc b/src/main.cc
-index e5eb9544..7528df63 100644
+index e5eb9544..9513b697 100644
 --- a/src/main.cc
 +++ b/src/main.cc
 @@ -14,6 +14,7 @@
@@ -10,13 +10,14 @@ index e5eb9544..7528df63 100644
  #include "draw.h"
  #include "endgame.h"
  #include "game.h"
-@@ -422,6 +423,12 @@ static void mainLoop()
+@@ -422,6 +423,13 @@ static void mainLoop()
  
          int keyCode = inputGetInput();
  
 +#ifdef __PS4__
 +        // Phase B: left-stick direct character movement + camera follow in the
 +        // exploration view. No-op in combat/menus (falls back to cursor).
++        ps4GamepadProcessPendingActions();
 +        ps4GamepadWorldMove();
 +#endif
 +

@@ -1,5 +1,5 @@
 diff --git a/src/combat.cc b/src/combat.cc
-index 91f7197a..3404be6e 100644
+index 91f7197a..92ec06da 100644
 --- a/src/combat.cc
 +++ b/src/combat.cc
 @@ -1932,6 +1932,12 @@ static Object* gCalledShotCritter;
@@ -15,7 +15,40 @@ index 91f7197a..3404be6e 100644
  // 0x56D378 combat_elev
  static int _combat_elev;
  
-@@ -5763,6 +5769,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
+@@ -2078,6 +2084,10 @@ void combatReset()
+     // SFALL
+     criticalsReset();
+     combat_reset_hit_location_penalty();
++
++#ifdef __PS4__
++    ps4GamepadClearPendingActions();
++#endif
+ }
+ 
+ // 0x420E14
+@@ -2088,6 +2098,10 @@ void combatExit()
+ 
+     // SFALL
+     criticalsExit();
++
++#ifdef __PS4__
++    ps4GamepadClearPendingActions();
++#endif
+ }
+ 
+ // 0x420E24
+@@ -3202,6 +3216,10 @@ static int _combat_input()
+ 
+         int keyCode = inputGetInput();
+ 
++#ifdef __PS4__
++        ps4GamepadProcessPendingActions();
++#endif
++
+         // SFALL: CombatLoopHook.
+         sfall_gl_scr_process_main();
+ 
+@@ -5763,6 +5781,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
  
      windowRefresh(gCalledShotWindow);
  
@@ -24,7 +57,7 @@ index 91f7197a..3404be6e 100644
      bool gameUiWasDisabled = gameUiIsDisabled();
      if (gameUiWasDisabled) {
          gameUiEnable();
-@@ -5803,6 +5811,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
+@@ -5803,6 +5823,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
  
      windowDestroy(gCalledShotWindow);
  
@@ -33,7 +66,7 @@ index 91f7197a..3404be6e 100644
      if (eventCode == KEY_ESCAPE) {
          return -1;
      }
-@@ -5989,6 +5999,351 @@ void _combat_attack_this(Object* target)
+@@ -5989,6 +6011,356 @@ void _combat_attack_this(Object* target)
      }
  }
  
@@ -304,6 +337,11 @@ index 91f7197a..3404be6e 100644
 +        }
 +    }
 +    return true;
++}
++
++bool combatIsTurnRunning()
++{
++    return _combat_turn_running > 0;
 +}
 +
 +// PS4 gamepad: force a called-shot (aimed) attack, reusing the engine's body-part

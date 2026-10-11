@@ -1,8 +1,8 @@
 diff --git a/src/dinput.h b/src/dinput.h
-index fda98487..31b00656 100644
+index fda98487..4aa11c20 100644
 --- a/src/dinput.h
 +++ b/src/dinput.h
-@@ -39,6 +39,12 @@ void keyboardDeviceFree();
+@@ -39,6 +39,13 @@ void keyboardDeviceFree();
  void handleMouseEvent(SDL_Event* event);
  void handleTouchEvent(SDL_Event* event);
  
@@ -10,6 +10,7 @@ index fda98487..31b00656 100644
 +// Phase B: drive the player character with the left stick in the exploration view.
 +// Call once per frame from the main game loop; no-op outside world-walk mode.
 +void ps4GamepadWorldMove();
++void ps4GamepadProcessPendingActions();
 +#endif
 +
  } // namespace fallout

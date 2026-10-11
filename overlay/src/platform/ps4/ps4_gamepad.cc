@@ -21,6 +21,7 @@
 #include "actions.h"
 #include "animation.h"
 #include "combat.h"
+#include "critter.h"
 #include "display_monitor.h"
 #include "game.h"
 #include "game_mouse.h"
@@ -38,6 +39,224 @@ static float g_virtualMouseY = 240.0f;
 static uint32_t g_lastTicks = 0;
 static bool g_prevButtons[SDL_CONTROLLER_BUTTON_MAX] = { false };
 static uint32_t g_lastDpadTicks = 0;
+
+static const int PS4_ACTION_QUEUE_CAPACITY = 8;
+static Ps4GamepadPendingAction s_actionQueue[PS4_ACTION_QUEUE_CAPACITY];
+static int s_actionQueueHead = 0;
+static int s_actionQueueTail = 0;
+static int s_actionQueueCount = 0;
+static bool s_isExecutingAction = false;
+
+void ps4GamepadClearPendingActions()
+{
+    s_actionQueueHead = 0;
+    s_actionQueueTail = 0;
+    s_actionQueueCount = 0;
+}
+
+bool ps4GamepadQueueAction(Ps4GamepadActionType type, Object* target, int param)
+{
+    if (s_isExecutingAction || combatIsTurnRunning()) {
+        return false;
+    }
+
+    if (s_actionQueueCount >= PS4_ACTION_QUEUE_CAPACITY) {
+        return false;
+    }
+
+    Ps4GamepadPendingAction& act = s_actionQueue[s_actionQueueTail];
+    act.type = type;
+    act.target = target;
+    act.param = param;
+    if (target != nullptr) {
+        act.targetId = target->id;
+        act.targetPid = target->pid;
+        act.targetElevation = target->elevation;
+    } else {
+        act.targetId = -1;
+        act.targetPid = -1;
+        act.targetElevation = -1;
+    }
+
+    s_actionQueueTail = (s_actionQueueTail + 1) % PS4_ACTION_QUEUE_CAPACITY;
+    s_actionQueueCount++;
+    return true;
+}
+
+// True when the left stick should walk the character rather than move the cursor:
+// the free-roam exploration view (no UI window, not on the worldmap, not in
+// combat). Combat and every menu/dialog fall back to the cursor system untouched.
+static bool ps4InWorldWalkMode()
+{
+    // gGameLoaded gates out the main menu and character creation etc. — there
+    // getCurrentGameMode() is also 0 and gDude is non-null, so without this the
+    // cursor would be suppressed on the startup menu (can't click Load Game).
+    return gGameLoaded
+        && gDude != nullptr
+        && GameMode::getCurrentGameMode() == 0
+        && !isInCombat()
+        && !gameUiIsDisabled();
+}
+
+// True when the isometric map view owns the screen — in the world OR in combat,
+// but not while a full-screen menu is up (dialog, inventory, pipboy, worldmap,
+// save/load, ...). Used to decide the right stick pans the camera (as it does in
+// the world) rather than acting as a menu scroll wheel. Combat leaves the map on
+// screen, so kCombat/kPlayerTurn are masked out; any other mode bit means a menu.
+static bool ps4InMapView()
+{
+    if (!gGameLoaded || gDude == nullptr || gameUiIsDisabled()) {
+        return false;
+    }
+    int mode = GameMode::getCurrentGameMode();
+    mode &= ~(GameMode::kCombat | GameMode::kPlayerTurn);
+    return mode == 0;
+}
+
+void ps4GamepadProcessPendingActions()
+{
+    if (s_isExecutingAction || combatIsTurnRunning()) {
+        return;
+    }
+
+    if (gDude == nullptr) {
+        ps4GamepadClearPendingActions();
+        return;
+    }
+
+    if ((gDude->data.critter.combat.results & (DAM_DEAD | DAM_KNOCKED_OUT)) != 0) {
+        ps4GamepadClearPendingActions();
+        return;
+    }
+
+    while (s_actionQueueCount > 0) {
+        Ps4GamepadPendingAction act = s_actionQueue[s_actionQueueHead];
+        s_actionQueueHead = (s_actionQueueHead + 1) % PS4_ACTION_QUEUE_CAPACITY;
+        s_actionQueueCount--;
+
+        if (act.type == PS4_PAD_ACTION_NONE) {
+            continue;
+        }
+
+        // Validate target if the action requires one
+        if (act.target != nullptr) {
+            if (act.target->id != act.targetId || act.target->pid != act.targetPid) {
+                continue;
+            }
+            if (act.target->elevation != gElevation || (act.target->flags & OBJECT_HIDDEN) != 0) {
+                continue;
+            }
+        }
+
+        bool inCombat = isInCombat();
+
+        switch (act.type) {
+        case PS4_PAD_ACTION_ATTACK: {
+            if (!inCombat || (gCombatState & COMBAT_STATE_PLAYER_TURN) == 0) {
+                continue;
+            }
+            if (gDude->data.critter.combat.ap <= 0 && _combat_free_move <= 0) {
+                continue;
+            }
+            if (act.target == nullptr || objectTypeFromPid(act.target->pid) != OBJ_TYPE_CRITTER) {
+                continue;
+            }
+            if (critterIsDead(act.target)) {
+                continue;
+            }
+
+            s_isExecutingAction = true;
+            _combat_attack_this(act.target);
+            s_isExecutingAction = false;
+            break;
+        }
+
+        case PS4_PAD_ACTION_AIMED_ATTACK: {
+            if (!inCombat || (gCombatState & COMBAT_STATE_PLAYER_TURN) == 0) {
+                continue;
+            }
+            if (gDude->data.critter.combat.ap <= 0 && _combat_free_move <= 0) {
+                continue;
+            }
+            if (act.target == nullptr || objectTypeFromPid(act.target->pid) != OBJ_TYPE_CRITTER) {
+                continue;
+            }
+            if (critterIsDead(act.target)) {
+                continue;
+            }
+
+            s_isExecutingAction = true;
+            combatGamepadAimedAttack(act.target);
+            s_isExecutingAction = false;
+            break;
+        }
+
+        case PS4_PAD_ACTION_MELEE_APPROACH: {
+            if (!inCombat || (gCombatState & COMBAT_STATE_PLAYER_TURN) == 0) {
+                continue;
+            }
+            if (gDude->data.critter.combat.ap <= 0 && _combat_free_move <= 0) {
+                continue;
+            }
+            if (act.target == nullptr || objectTypeFromPid(act.target->pid) != OBJ_TYPE_CRITTER) {
+                continue;
+            }
+            if (critterIsDead(act.target)) {
+                continue;
+            }
+
+            s_isExecutingAction = true;
+            combatGamepadApproachAndAttack(act.target, act.param != 0);
+            s_isExecutingAction = false;
+            break;
+        }
+
+        case PS4_PAD_ACTION_LOOT_INTERACT: {
+            if (inCombat || !ps4InWorldWalkMode()) {
+                continue;
+            }
+            if (act.target == nullptr) {
+                continue;
+            }
+
+            s_isExecutingAction = true;
+            switch (objectTypeFromPid(act.target->pid)) {
+            case OBJ_TYPE_ITEM:
+                actionPickUp(gDude, act.target);
+                break;
+            case OBJ_TYPE_CRITTER:
+                actionLootCritter(gDude, act.target);
+                break;
+            case OBJ_TYPE_SCENERY:
+                _action_use_an_object(gDude, act.target);
+                break;
+            default:
+                break;
+            }
+            s_isExecutingAction = false;
+            break;
+        }
+
+        case PS4_PAD_ACTION_RELOAD: {
+            if (inCombat) {
+                if ((gCombatState & COMBAT_STATE_PLAYER_TURN) == 0) {
+                    continue;
+                }
+                if (gDude->data.critter.combat.ap <= 0 && _combat_free_move <= 0) {
+                    continue;
+                }
+            }
+            s_isExecutingAction = true;
+            interfaceGamepadReload();
+            s_isExecutingAction = false;
+            break;
+        }
+
+        default:
+            break;
+        }
+    }
+}
 
 static void ps4ClampVirtualCursor()
 {
@@ -116,7 +335,7 @@ static void ps4ApplyButton(int action, bool held, bool* prev)
     case PS4_ACT_RELOAD:
         // Reload the active-hand weapon (spends AP in combat).
         if (held && !*prev) {
-            interfaceGamepadReload();
+            ps4GamepadQueueAction(PS4_PAD_ACTION_RELOAD, nullptr, 0);
         }
         break;
     default: {
@@ -144,42 +363,14 @@ static bool ps4PadButtons(uint32_t* outButtons)
     return true;
 }
 
-// --- Phase B: direct world movement (left stick) -----------------------------
-// True when the left stick should walk the character rather than move the cursor:
-// the free-roam exploration view (no UI window, not on the worldmap, not in
-// combat). Combat and every menu/dialog fall back to the cursor system untouched.
-static bool ps4InWorldWalkMode()
-{
-    // gGameLoaded gates out the main menu and character creation etc. — there
-    // getCurrentGameMode() is also 0 and gDude is non-null, so without this the
-    // cursor would be suppressed on the startup menu (can't click Load Game).
-    return gGameLoaded
-        && gDude != nullptr
-        && GameMode::getCurrentGameMode() == 0
-        && !isInCombat()
-        && !gameUiIsDisabled();
-}
-
-// True when the isometric map view owns the screen — in the world OR in combat,
-// but not while a full-screen menu is up (dialog, inventory, pipboy, worldmap,
-// save/load, ...). Used to decide the right stick pans the camera (as it does in
-// the world) rather than acting as a menu scroll wheel. Combat leaves the map on
-// screen, so kCombat/kPlayerTurn are masked out; any other mode bit means a menu.
-static bool ps4InMapView()
-{
-    if (!gGameLoaded || gDude == nullptr || gameUiIsDisabled()) {
-        return false;
-    }
-    int mode = GameMode::getCurrentGameMode();
-    mode &= ~(GameMode::kCombat | GameMode::kPlayerTurn);
-    return mode == 0;
-}
-
 // Drive the player with the left stick. Called once per frame from mainLoop().
 // Continuous march: light stick = walk, hard = run; camera follows the player;
 // direction snaps to the nearest of the 6 hex rotations. No-op outside world mode.
 void ps4GamepadWorldMove()
 {
+    // Process any deferred actions (e.g. world loot/interact/reload).
+    ps4GamepadProcessPendingActions();
+
     // Tracks when the stick left the deadzone, so the very first step reflects the
     // settled deflection (run vs walk) instead of the mid-ramp first frame.
     static bool s_active = false;
@@ -697,7 +888,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
                     bool fire = SDL_GameControllerGetButton(g_gamepad, SDL_CONTROLLER_BUTTON_A) != 0;
                     if (fire && !g_prevButtons[SDL_CONTROLLER_BUTTON_A]) {
                         if (r2Held) {
-                            combatGamepadAimedAttack(target);
+                            ps4GamepadQueueAction(PS4_PAD_ACTION_AIMED_ATTACK, target, 0);
                         } else {
                             // Melee/unarmed (reach <= 2) out of range: run up and
                             // then swing, mirroring the enemy AI. The engine's
@@ -710,10 +901,10 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
                             int dist = objectGetDistanceBetween(gDude, target);
                             if (range <= 2 && dist > range
                                 && g_ps4Controls.meleeApproach != PS4_MELEE_OFF) {
-                                combatGamepadApproachAndAttack(target,
-                                    g_ps4Controls.meleeApproach == PS4_MELEE_ATTACK);
+                                ps4GamepadQueueAction(PS4_PAD_ACTION_MELEE_APPROACH, target,
+                                    g_ps4Controls.meleeApproach == PS4_MELEE_ATTACK ? 1 : 0);
                             } else {
-                                _combat_attack_this(target);
+                                ps4GamepadQueueAction(PS4_PAD_ACTION_ATTACK, target, 0);
                             }
                         }
                     }
@@ -723,24 +914,11 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
                     // Loot assist: act on the SELECTED object directly (walk up +
                     // open/loot/door), not a positional click — so a container behind
                     // clutter (e.g. a merchant's "Stuff" that overlaps a table) is
-                    // used instead of whatever the cursor overlaps. Dispatch per type
-                    // exactly as the engine's own ARROW-mode click does
-                    // (game_mouse.cc): objectUse only handles scenery, so items need
-                    // actionPickUp (which opens containers + runs their script/barter)
-                    // and corpses need actionLootCritter.
+                    // used instead of whatever the cursor overlaps. Dispatched per type
+                    // via the deferred action queue outside of input polling.
                     bool fire = SDL_GameControllerGetButton(g_gamepad, SDL_CONTROLLER_BUTTON_A) != 0;
                     if (fire && !g_prevButtons[SDL_CONTROLLER_BUTTON_A]) {
-                        switch (objectTypeFromPid(target->pid)) {
-                        case OBJ_TYPE_ITEM:
-                            actionPickUp(gDude, target);
-                            break;
-                        case OBJ_TYPE_CRITTER:
-                            actionLootCritter(gDude, target);
-                            break;
-                        case OBJ_TYPE_SCENERY:
-                            _action_use_an_object(gDude, target);
-                            break;
-                        }
+                        ps4GamepadQueueAction(PS4_PAD_ACTION_LOOT_INTERACT, target, 0);
                     }
                     g_prevButtons[SDL_CONTROLLER_BUTTON_A] = fire;
                 }
