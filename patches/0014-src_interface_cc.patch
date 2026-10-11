@@ -1,5 +1,5 @@
 diff --git a/src/interface.cc b/src/interface.cc
-index 2c295de6..a42cda33 100644
+index 6486ef98..81ed6596 100644
 --- a/src/interface.cc
 +++ b/src/interface.cc
 @@ -2271,6 +2271,68 @@ static int _intface_item_reload()

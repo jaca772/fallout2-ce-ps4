@@ -1,11 +1,11 @@
 diff --git a/src/audio_engine.cc b/src/audio_engine.cc
-index aa7ba11a..b7d6453e 100644
+index 2041ef16..7ddc3839 100644
 --- a/src/audio_engine.cc
 +++ b/src/audio_engine.cc
-@@ -97,6 +97,16 @@ static void audioEngineMixin(void* userData, Uint8* stream, int length)
+@@ -120,6 +120,16 @@ bool audioEngineInit(int soundBufferCount)
+         return false;
+     }
  
- bool audioEngineInit()
- {
 +#ifdef __PS4__
 +    // AUDIO is intentionally left out of the initial SDL_Init on PS4 (see
 +    // win32.cc: mbus 8-client cap). Bring the audio subsystem up here instead,
@@ -16,10 +16,10 @@ index aa7ba11a..b7d6453e 100644
 +    }
 +#endif
 +
-     SDL_AudioSpec desiredSpec;
-     // Request 44.1 kHz output so 44.1 kHz ACM music can play without being
-     // downsampled by the mixer on the common path.
-@@ -123,8 +133,18 @@ bool audioEngineInit()
+     // Buffers must exist before the device starts calling the mixer.
+     gAudioEngineSoundBuffers = std::make_unique<AudioEngineSoundBuffer[]>(soundBufferCount);
+     audioEngineSoundBufferCount = soundBufferCount;
+@@ -152,8 +162,18 @@ bool audioEngineInit(int soundBufferCount)
  void audioEngineExit()
  {
      if (audioEngineIsInitialized()) {
@@ -35,6 +35,6 @@ index aa7ba11a..b7d6453e 100644
          SDL_CloseAudioDevice(gAudioEngineDeviceId);
          gAudioEngineDeviceId = -1;
 +#endif
-     }
- }
  
+         gAudioEngineSoundBuffers.reset();
+         audioEngineSoundBufferCount = 0;

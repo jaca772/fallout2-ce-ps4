@@ -87,7 +87,7 @@ int combatGamepadListTargets(Object** out, int maxCount, bool wholeMap)
         if (c == nullptr || c == gDude) {
             continue;
         }
-        if (objectTypeFromPid(c->pid) != OBJ_TYPE_CRITTER) {
+        if (ProtoId(c->pid).objectType() != OBJ_TYPE_CRITTER) {
             continue;
         }
         if ((c->data.critter.combat.results & (DAM_DEAD | DAM_KNOCKED_OUT)) != 0) {
@@ -180,7 +180,7 @@ int gamepadListInteractables(Object** out, int maxCount, bool wholeMap, int maxT
                 break;
             case OBJ_TYPE_SCENERY: {
                 Proto* proto;
-                if (protoGetProto(o->pid, &proto) != -1 && proto->scenery.type == SCENERY_TYPE_DOOR) {
+                if (protoGetProto(ProtoId(o->pid), &proto) != -1 && proto->scenery.type == SCENERY_TYPE_DOOR) {
                     // Only closed doors are worth snapping to (open/close, lockpick);
                     // skip ones already open. openFlags bit 0 is the engine's door-open state.
                     keep = (o->data.scenery.door.openFlags & 0x01) == 0;
@@ -244,7 +244,7 @@ bool combatGamepadCanEndCombat()
         if (critter == nullptr || critter == gDude) {
             continue;
         }
-        if (objectTypeFromPid(critter->pid) != OBJ_TYPE_CRITTER) {
+        if (ProtoId(critter->pid).objectType() != OBJ_TYPE_CRITTER) {
             continue;
         }
         // Dead / unconscious critters are no threat.

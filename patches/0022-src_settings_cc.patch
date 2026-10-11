@@ -1,8 +1,8 @@
 diff --git a/src/settings.cc b/src/settings.cc
-index 2fc76f70..ed87a36d 100644
+index bd38ae11..b648c2a7 100644
 --- a/src/settings.cc
 +++ b/src/settings.cc
-@@ -150,7 +150,11 @@ void initSettingsRegistry(bool isMapper)
+@@ -255,7 +255,11 @@ void initSettingsRegistry(bool isMapper)
      SETTING(language);
      SETTING(scroll_lock);
      SETTING(interrupt_walk);
@@ -14,8 +14,8 @@ index 2fc76f70..ed87a36d 100644
      SETTING(color_cycling);
      SETTING(cycle_speed_factor);
      SETTING(hashing);
-@@ -307,6 +311,13 @@ bool settingsInit(bool isMapper, int argc, char** argv)
-         descriptor.read();
+@@ -439,6 +443,13 @@ bool settingsInit(bool isMapper, int argc, char** argv)
+         entry.read();
      }
  
 +#ifdef __PS4__

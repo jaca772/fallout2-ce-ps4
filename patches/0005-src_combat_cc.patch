@@ -1,5 +1,5 @@
 diff --git a/src/combat.cc b/src/combat.cc
-index 91f7197a..4b4c0987 100644
+index 744995d0..9720200d 100644
 --- a/src/combat.cc
 +++ b/src/combat.cc
 @@ -1932,6 +1932,12 @@ static Object* gCalledShotCritter;
@@ -48,7 +48,7 @@ index 91f7197a..4b4c0987 100644
          // SFALL: CombatLoopHook.
          sfall_gl_scr_process_main();
  
-@@ -5763,6 +5781,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
+@@ -5767,6 +5785,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
  
      windowRefresh(gCalledShotWindow);
  
@@ -57,7 +57,7 @@ index 91f7197a..4b4c0987 100644
      bool gameUiWasDisabled = gameUiIsDisabled();
      if (gameUiWasDisabled) {
          gameUiEnable();
-@@ -5803,6 +5823,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
+@@ -5807,6 +5827,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
  
      windowDestroy(gCalledShotWindow);
  
@@ -66,7 +66,7 @@ index 91f7197a..4b4c0987 100644
      if (eventCode == KEY_ESCAPE) {
          return -1;
      }
-@@ -5989,9 +6011,40 @@ void _combat_attack_this(Object* target)
+@@ -5993,9 +6015,40 @@ void _combat_attack_this(Object* target)
      }
  }
  

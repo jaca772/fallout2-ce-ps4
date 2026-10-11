@@ -159,7 +159,7 @@ void ps4GamepadProcessPendingActions()
             if (gDude->data.critter.combat.ap <= 0 && _combat_free_move <= 0) {
                 continue;
             }
-            if (act.target == nullptr || objectTypeFromPid(act.target->pid) != OBJ_TYPE_CRITTER) {
+            if (act.target == nullptr || ProtoId(act.target->pid).objectType() != OBJ_TYPE_CRITTER) {
                 continue;
             }
             if (critterIsDead(act.target)) {
@@ -179,7 +179,7 @@ void ps4GamepadProcessPendingActions()
             if (gDude->data.critter.combat.ap <= 0 && _combat_free_move <= 0) {
                 continue;
             }
-            if (act.target == nullptr || objectTypeFromPid(act.target->pid) != OBJ_TYPE_CRITTER) {
+            if (act.target == nullptr || ProtoId(act.target->pid).objectType() != OBJ_TYPE_CRITTER) {
                 continue;
             }
             if (critterIsDead(act.target)) {
@@ -199,7 +199,7 @@ void ps4GamepadProcessPendingActions()
             if (gDude->data.critter.combat.ap <= 0 && _combat_free_move <= 0) {
                 continue;
             }
-            if (act.target == nullptr || objectTypeFromPid(act.target->pid) != OBJ_TYPE_CRITTER) {
+            if (act.target == nullptr || ProtoId(act.target->pid).objectType() != OBJ_TYPE_CRITTER) {
                 continue;
             }
             if (critterIsDead(act.target)) {
@@ -221,7 +221,7 @@ void ps4GamepadProcessPendingActions()
             }
 
             s_isExecutingAction = true;
-            switch (objectTypeFromPid(act.target->pid)) {
+            switch (ProtoId(act.target->pid).objectType()) {
             case OBJ_TYPE_ITEM:
                 actionPickUp(gDude, act.target);
                 break;

@@ -1,5 +1,5 @@
 diff --git a/src/art.cc b/src/art.cc
-index 42bd545a..e7f47d48 100644
+index 017a14cb..8bc2c233 100644
 --- a/src/art.cc
 +++ b/src/art.cc
 @@ -18,6 +18,9 @@

@@ -1,5 +1,5 @@
 diff --git a/src/win32.cc b/src/win32.cc
-index 811f233f..35ebb79f 100644
+index 36f04545..73f6a18b 100644
 --- a/src/win32.cc
 +++ b/src/win32.cc
 @@ -30,6 +30,10 @@
@@ -10,10 +10,10 @@ index 811f233f..35ebb79f 100644
 +#include "platform/ps4/ps4.h"
 +#endif
 +
- namespace fallout {
+ // explicit `atexit` group
+ #include "audio_engine.h"
  
- // 0x51E444 GNW95_isActive
-@@ -98,19 +102,70 @@ int main(int argc, char* argv[])
+@@ -101,9 +105,20 @@ int main(int argc, char* argv[])
      chdir(SDL_AndroidGetExternalStoragePath());
  #endif
  
@@ -32,7 +32,9 @@ index 811f233f..35ebb79f 100644
      }
 +#endif
  
-     atexit(SDL_Quit);
+     atexit([] {
+         audioEngineExit();
+@@ -112,11 +127,51 @@ int main(int argc, char* argv[])
  
      SDL_ShowCursor(SDL_DISABLE);
  
