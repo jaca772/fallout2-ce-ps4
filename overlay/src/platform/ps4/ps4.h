@@ -10,6 +10,12 @@ const char* ps4GetDataPath();
 void ps4SetDataPath(const char* path);
 #define PS4_DATA_PATH ps4GetDataPath()
 
+// Write guard for the jailbroken (prison0) process: true only if [nativePath] is
+// the active game directory or lies below it, or is the boot config file.
+// The path is lexically normalized first, so ".." cannot be used to escape.
+// Symlinks are not resolved.
+bool ps4IsPathWritable(const char* nativePath);
+
 // Writes a printf-formatted line to the console debug channel (klog). Works
 // before SDL_Init and before the heap is up — unlike SDL_Log (its sink is only
 // installed during SDL_Init) and printf (its stdout is not wired on this port).

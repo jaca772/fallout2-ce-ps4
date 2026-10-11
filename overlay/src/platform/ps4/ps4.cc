@@ -20,6 +20,7 @@
 
 #include "platform_compat.h"
 #include "platform/ps4/ps4_boot_menu.h"
+#include "platform/ps4/ps4_path.h"
 #include "platform/ps4/ps4_video.h"
 
 // --- C++ static-init workaround (PS4/OpenOrbis) -----------------------------
@@ -264,6 +265,29 @@ void ps4SetDataPath(const char* path)
     }
 }
 
+// Security boundary for the prison0 escaped filesystem access.
+// Only allows writes/modifications within the active game directory ps4GetDataPath()
+// (including USB mounts /mnt/usb0, /mnt/usb1) and the boot config /data/f2_active_game.txt.
+// Both sides are normalized first so ".." components cannot escape the directory.
+bool ps4IsPathWritable(const char* nativePath)
+{
+    char path[1024];
+    if (!ps4PathNormalize(nativePath, path, sizeof(path)) || path[0] != '/') {
+        return false;
+    }
+
+    if (strcmp(path, "/data/f2_active_game.txt") == 0) {
+        return true;
+    }
+
+    char base[1024];
+    if (!ps4PathNormalize(ps4GetDataPath(), base, sizeof(base)) || base[0] != '/') {
+        return false;
+    }
+
+    return ps4PathIsUnder(path, base);
+}
+
 // Public klog helper (declared in ps4.h) for the shared startup code in
 // win32.cc. Same allocation-free debug-channel write as the file-scope
 // ps4EarlyLog used above.
@@ -435,21 +459,6 @@ static int ps4ParseWrs(const char* s)
     return -1;
 }
 
-// Parse a "key=action" line; on match, store the action (if known) and return true.
-static bool ps4ParseButtonLine(const char* line, const char* key, int* out)
-{
-    char fmt[32];
-    char buf[16];
-    snprintf(fmt, sizeof(fmt), "%s=%%15s", key);
-    if (sscanf(line, fmt, buf) == 1) {
-        int a = ps4ParseAction(buf);
-        if (a >= 0) {
-            *out = a;
-        }
-        return true;
-    }
-    return false;
-}
 
 static void ps4WriteDefaultControlsConfig(const char* path)
 {

@@ -56,8 +56,13 @@ jobs:
         run: |
           set -euxo pipefail
           source /opt/pacbrew/ps4/openorbis/ps4vars.sh
-          if [ -n "${{ github.event.inputs.upstream_ref }}" ]; then
-            export UPSTREAM_REF='${{ github.event.inputs.upstream_ref }}'
+          REF='${{ github.event.inputs.upstream_ref }}'
+          if [ -n "$REF" ]; then
+            if ! [[ "$REF" =~ ^[a-zA-Z0-9_./-]+$ ]]; then
+              echo "Error: Invalid upstream_ref format: $REF"
+              exit 1
+            fi
+            export UPSTREAM_REF="$REF"
           fi
 
           bash scripts/build.sh

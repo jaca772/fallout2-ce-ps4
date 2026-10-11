@@ -25,11 +25,11 @@ it's easy to lift or replace:
   mouse/keys, the two-stick scheme (walk / centered-camera / free-cursor), touchpad
   finger cursor (accel + smoothing), D-pad, and the **aim-assist** driver. Reads the
   pad through SDL plus native **scePad** for the buttons SDL can't (see below).
-- 🟠 **`patches/0007-src_dinput_cc.patch` + `0008-src_dinput_h.patch`** — the single
+- 🟠 **`patches/0008-src_dinput_cc.patch` + `0009-src_dinput_h.patch`** — the single
   hook that calls into `ps4_gamepad` from the engine's input polling.
-- 🟠 **`patches/0013-src_main_cc.patch`** — one line: run `ps4GamepadWorldMove()`
+- 🟠 **`patches/0017-src_main_cc.patch`** — one line: run `ps4GamepadWorldMove()`
   per frame from the main loop (stick-walk + camera follow).
-- 🟢 **`patches/0011-src_interface_cc.patch`** — `interfaceGamepadReload()`: reload
+- 🟢 **`patches/0014-src_interface_cc.patch`** — `interfaceGamepadReload()`: reload
   the active-hand weapon inline, honoring AP in combat, without cycling the item
   action mode. Pure engine logic — portable directly.
 
@@ -43,7 +43,7 @@ has a different pad backend, this is where you'd re-map.
 ## Combat assist (aim / VATS / melee auto-approach)
 
 All 🟢 **engine-generic** — this is the reusable heart. In
-**`patches/0004-src_combat_cc.patch` (+ `0005-src_combat_h.patch`)**:
+**`patches/0005-src_combat_cc.patch` (+ `0006-src_combat_h.patch`)**:
 
 - `combatGamepadListTargets()` — nearest-first list of living hostiles, LOS-filtered;
   melee/unarmed uses **perception reach** so non-adjacent enemies are still targetable.
@@ -61,20 +61,20 @@ range-free to-hit, because the engine reticle shows nothing out of range).
 
 ## Filesystem & data
 
-- 🟢 **`patches/0016-src_platform_compat_cc.patch`** — **case-insensitive `fopen`**:
+- 🟢 **`patches/0021-src_platform_compat_cc.patch`** — **case-insensitive `fopen`**:
   on a read miss, walk the path components and match case-insensitively
   (`opendir` + `strcasecmp`). Lets mixed-case game data (`sound/` vs `SOUND/`) work
   on a case-sensitive FS with **no manual renaming**. Directly reusable on any
   case-sensitive platform. Same patch maps `compat_timeGetTime()` to `SDL_GetTicks()`
   off-Windows (movie/pacing timing).
-- 🟢 **`patches/0010-src_file_find_cc.patch`** — `fileFindFirst` did `opendir()` on a
+- 🟢 **`patches/0011-src_file_find_cc.patch`** — `fileFindFirst` did `opendir()` on a
   **relative** base, which fails when `getcwd()` isn't the data dir → the save/load
   map scan found 0 entries. Fix prepends the data path before `opendir` (names stay
   relative).
-- 🟢 **`patches/0017-src_settings_cc.patch`** — clear `master_patches`/`critter_patches`
+- 🟢 **`patches/0022-src_settings_cc.patch`** — clear `master_patches`/`critter_patches`
   so the "data" dir-xbase that bridges the SAVEGAME path on desktop isn't required.
 
-Together 0010 + 0017 are what make **save/load** work when the process CWD isn't the
+Together 0011 + 0022 are what make **save/load** work when the process CWD isn't the
 game directory — a common console situation.
 
 ## Boot / platform bring-up (🟠 all OpenOrbis-specific)
@@ -83,13 +83,13 @@ game directory — a common console situation.
   jailbreak + mount `/data` into the sandbox, read/write `ps4_controls.cfg`, load the
   GLES modules, and the clean-exit wrap. If you port to another OS, this file is what
   you rewrite; everything above it stays.
-- **`patches/0018-src_win32_cc.patch`** — **boot ordering** (this fixed the
+- **`patches/0024-src_win32_cc.patch`** — **boot ordering** (this fixed the
   black screen): `SDL_Init` → `ps4MountData()` → configure Piglet/EGL → create the
   window. The cred jailbreak must run **before** the EGL surface is created or the
   compositor has no permission to register the canvas. Also wraps `exit()`/`_exit()`
   (`-Wl,--wrap`) to `sceSystemServiceLoadExec("exit")` so quitting returns to the
   dashboard instead of `SIGSYS`.
-- **`patches/0003-src_audio_engine_cc.patch`** — leave AUDIO out of the initial
+- **`patches/0004-src_audio_engine_cc.patch`** — leave AUDIO out of the initial
   `SDL_Init`, and skip `SDL_CloseAudioDevice` on shutdown (the SDL-PS4 audio backend
   `abort()`s there). A clean-exit fix.
 - **Console-provided GLES modules** — the default build bundles **no Sony modules**
@@ -99,15 +99,15 @@ game directory — a common console situation.
 
 ## Portability gotchas worth stealing
 
-- 🟢 **`patches/0009-src_display_monitor_cc.patch`** — a file-scope object was
+- 🟢 **`patches/0010-src_display_monitor_cc.patch`** — a file-scope object was
   lazily constructed to dodge the **static-initialization-order fiasco** (an early
   ctor touched a not-yet-initialized `iostream`). Bites any toolchain with different
   init order — not just PS4.
-- 🟠 **`patches/0006-src_debug_cc.patch`** — route `debugPrint` to **klog**
+- 🟠 **`patches/0007-src_debug_cc.patch`** — route `debugPrint` to **klog**
   unconditionally (the OpenOrbis console log), so on-device diagnostics actually show.
-- 🟠 **`patches/0014-src_movie_cc.patch` / `0015-src_movie_lib_cc.patch`** — movie
+- 🟠 **`patches/0019-src_movie_cc.patch` / `0020-src_movie_lib_cc.patch`** — movie
   playback instrumentation/pacing tweaks (the actual timing fix is the
-  `SDL_GetTicks()` mapping in 0016).
+  `SDL_GetTicks()` mapping in 0021).
 
 ## Build system
 

@@ -48,6 +48,11 @@ static int s_actionQueueTail = 0;
 static int s_actionQueueCount = 0;
 static bool s_isExecutingAction = false;
 
+// After a queued action runs, the aim list can hold a destroyed object (e.g. a
+// picked-up item that merged into a stack once its pickup animation finishes).
+// Until this tick the aim list is pruned every frame instead of every ~120 ms.
+static uint32_t s_aimFastPruneUntil = 0;
+
 void ps4GamepadClearPendingActions()
 {
     s_actionQueueHead = 0;
@@ -114,6 +119,32 @@ static bool ps4InMapView()
     return mode == 0;
 }
 
+// True if the queued action's target is still on the current elevation's object
+// lists. Compares pointer values only and NEVER dereferences act.target, so it is
+// safe even if the object was freed after the action was queued (stack merge on
+// pickup, script destroy, map change). The id/pid check that follows guards
+// against the address having been reused by a new object.
+static bool ps4QueuedTargetIsLive(const Ps4GamepadPendingAction& act)
+{
+    if (act.targetElevation != gElevation) {
+        return false;
+    }
+
+    Object** list = nullptr;
+    int len = objectListCreate(-1, gElevation, ProtoId(act.targetPid).objectType(), &list);
+    bool found = false;
+    for (int i = 0; i < len; i++) {
+        if (list[i] == act.target) {
+            found = true;
+            break;
+        }
+    }
+    if (len != 0 && list != nullptr) {
+        objectListFree(list);
+    }
+    return found;
+}
+
 void ps4GamepadProcessPendingActions()
 {
     if (s_isExecutingAction || combatIsTurnRunning()) {
@@ -141,6 +172,9 @@ void ps4GamepadProcessPendingActions()
 
         // Validate target if the action requires one
         if (act.target != nullptr) {
+            if (!ps4QueuedTargetIsLive(act)) {
+                continue;
+            }
             if (act.target->id != act.targetId || act.target->pid != act.targetPid) {
                 continue;
             }
@@ -167,6 +201,7 @@ void ps4GamepadProcessPendingActions()
             }
 
             s_isExecutingAction = true;
+            s_aimFastPruneUntil = SDL_GetTicks() + 2000;
             _combat_attack_this(act.target);
             s_isExecutingAction = false;
             break;
@@ -187,6 +222,7 @@ void ps4GamepadProcessPendingActions()
             }
 
             s_isExecutingAction = true;
+            s_aimFastPruneUntil = SDL_GetTicks() + 2000;
             combatGamepadAimedAttack(act.target);
             s_isExecutingAction = false;
             break;
@@ -207,6 +243,7 @@ void ps4GamepadProcessPendingActions()
             }
 
             s_isExecutingAction = true;
+            s_aimFastPruneUntil = SDL_GetTicks() + 2000;
             combatGamepadApproachAndAttack(act.target, act.param != 0);
             s_isExecutingAction = false;
             break;
@@ -221,6 +258,7 @@ void ps4GamepadProcessPendingActions()
             }
 
             s_isExecutingAction = true;
+            s_aimFastPruneUntil = SDL_GetTicks() + 2000;
             switch (ProtoId(act.target->pid).objectType()) {
             case OBJ_TYPE_ITEM:
                 actionPickUp(gDude, act.target);
@@ -781,7 +819,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
                 // without re-allocating object lists every frame.
                 static uint32_t s_lastPruneTicks = 0;
                 bool selectedInvalid = (s_aimSelected == nullptr);
-                if (selectedInvalid || (currentTicks - s_lastPruneTicks >= 120)) {
+                if (selectedInvalid || currentTicks < s_aimFastPruneUntil || (currentTicks - s_lastPruneTicks >= 120)) {
                     s_lastPruneTicks = currentTicks;
                     Object* live[64];
                     int nLive = buildAimList(live, 64, true);

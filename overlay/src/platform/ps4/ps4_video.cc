@@ -374,6 +374,16 @@ void ps4VideoPresent(SDL_Surface* frame)
         return;
     }
 
+    if (frame->w != g.srcW || frame->h != g.srcH) {
+        static bool s_warnedMismatch = false;
+        if (!s_warnedMismatch) {
+            s_warnedMismatch = true;
+            ps4Log("[ps4] video: frame surface size mismatch (%dx%d, expected %dx%d)\n",
+                   frame->w, frame->h, g.srcW, g.srcH);
+        }
+        return;
+    }
+
     // Pipelined wait: wait for the buffer we are about to write into (activeIdx)
     // to no longer be displayed. For double-buffering, activeIdx is free once
     // the previous frame (frameID - 1) has been flipped.

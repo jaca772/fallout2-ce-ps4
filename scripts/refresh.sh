@@ -20,7 +20,7 @@ MODIFIED=$(git -C "$FORK" diff --name-status "$REF" ps4 | awk '$1=="M"{print $2}
 #             outside overlay/ so refresh never touches it), and the built tree needs
 #             no docs.
 #             dev experiment, not part of the engine build, so kept out of the overlay.
-ADDED_OK=$(echo "$ADDED" | grep -viE '^docs/' || true)
+ADDED_OK=$(echo "$ADDED" | grep -viE '^(docs|tests)/' || true)
 git -C "$FORK" archive ps4 $ADDED_OK | tar -x -C "$ROOT/overlay"
 
 # patches = one diff per modified upstream file

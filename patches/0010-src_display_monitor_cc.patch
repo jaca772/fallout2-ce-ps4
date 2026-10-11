@@ -1,8 +1,19 @@
 diff --git a/src/display_monitor.cc b/src/display_monitor.cc
-index 48d3f1fd..2f9f8546 100644
+index 48d3f1fd..2cd4a983 100644
 --- a/src/display_monitor.cc
 +++ b/src/display_monitor.cc
-@@ -95,7 +95,16 @@ static int _disp_start;
+@@ -20,6 +20,10 @@
+ #include "text_font.h"
+ #include "window_manager.h"
+ 
++#ifdef __PS4__
++#include "platform/ps4/ps4.h"
++#endif
++
+ namespace fallout {
+ 
+ // The maximum number of lines display monitor can hold. Once this value
+@@ -95,7 +99,16 @@ static int _disp_start;
  // 0x56FB58 lastTime
  static unsigned int gDisplayMonitorLastBeepTimestamp;
  
@@ -20,12 +31,26 @@ index 48d3f1fd..2f9f8546 100644
  static int gConsoleFilePrintCount = 0;
  
  // 0x431610 display_init
-@@ -441,29 +450,29 @@ static void consoleFileInit()
+@@ -441,29 +454,43 @@ static void consoleFileInit()
  {
      const std::string& consolePath = settings.debug.console_output_path;
      if (!consolePath.empty()) {
 -        gConsoleFileStream.open(consolePath);
++#ifdef __PS4__
++        // Same write guard as compat_fopen; getcwd() is unusable after the cred
++        // jailbreak, so resolve relative paths against the game directory.
++        std::string nativePath = consolePath;
++        if (nativePath[0] != '/') {
++            nativePath = std::string(ps4GetDataPath()) + "/" + nativePath;
++        }
++        if (!ps4IsPathWritable(nativePath.c_str())) {
++            ps4Log("[ps4] Security: blocked console_output_path outside game dir\n");
++            return;
++        }
++        consoleFileStream().open(nativePath);
++#else
 +        consoleFileStream().open(consolePath);
++#endif
      }
  }
  
@@ -57,7 +82,7 @@ index 48d3f1fd..2f9f8546 100644
  
          gConsoleFilePrintCount++;
          if (gConsoleFilePrintCount >= 20) {
-@@ -474,9 +483,9 @@ static void consoleFileAddMessage(const char* message)
+@@ -474,9 +501,9 @@ static void consoleFileAddMessage(const char* message)
  
  static void consoleFileFlush()
  {

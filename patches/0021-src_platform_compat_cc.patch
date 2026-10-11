@@ -1,8 +1,8 @@
 diff --git a/src/platform_compat.cc b/src/platform_compat.cc
-index a9a6c10d..33236725 100644
+index a9a6c10d..0ff6f4e3 100644
 --- a/src/platform_compat.cc
 +++ b/src/platform_compat.cc
-@@ -13,10 +13,15 @@
+@@ -13,10 +13,16 @@
  #include <sys/stat.h>
  #else
  #include <dirent.h>
@@ -12,13 +12,14 @@ index a9a6c10d..33236725 100644
  #endif
  
 +#ifdef __PS4__
++#include <orbis/libkernel.h>
 +#include "platform/ps4/ps4.h"
 +#endif
 +
  #ifdef _WIN32
  #include <windows.h>
  #ifdef _WIN64
-@@ -24,8 +29,6 @@
+@@ -24,8 +30,6 @@
  #else
  #include <mmsystem.h>
  #endif
@@ -27,7 +28,7 @@ index a9a6c10d..33236725 100644
  #endif
  
  #include <SDL.h>
-@@ -100,12 +103,51 @@ static void compatDirectoryEntryCacheClear()
+@@ -100,8 +104,21 @@ static void compatDirectoryEntryCacheClear()
  
  static void compat_prepare_native_path(char* nativePath, const char* path)
  {
@@ -49,37 +50,7 @@ index a9a6c10d..33236725 100644
      compat_windows_path_to_native(nativePath);
      compat_resolve_path(nativePath);
  }
- 
-+#ifdef __PS4__
-+// Security boundary for the prison0 escaped filesystem access.
-+// Only allows writes/modifications within the active game directory ps4GetDataPath()
-+// (including USB mounts /mnt/usb0, /mnt/usb1) and the boot config /data/f2_active_game.txt.
-+static bool ps4IsPathWritable(const char* nativePath)
-+{
-+    if (nativePath == nullptr || nativePath[0] == '\0') {
-+        return false;
-+    }
-+
-+    const char* dataPath = ps4GetDataPath();
-+    if (dataPath != nullptr && dataPath[0] != '\0') {
-+        size_t dataLen = strlen(dataPath);
-+        if (strncmp(nativePath, dataPath, dataLen) == 0 && (nativePath[dataLen] == '/' || nativePath[dataLen] == '\0')) {
-+            return true;
-+        }
-+    }
-+
-+    if (strcmp(nativePath, "/data/f2_active_game.txt") == 0) {
-+        return true;
-+    }
-+
-+    return false;
-+}
-+#endif
-+
- int compat_stricmp(const char* string1, const char* string2)
- {
-     return SDL_strcasecmp(string1, string2);
-@@ -283,11 +325,23 @@ long compat_filelength(int fd)
+@@ -283,11 +300,23 @@ long compat_filelength(int fd)
  
  int compat_mkdir(const char* path)
  {
@@ -103,30 +74,38 @@ index a9a6c10d..33236725 100644
  #ifdef _WIN32
      int rc = mkdir(nativePath);
  #else
-@@ -314,13 +368,19 @@ int compat_mkdir_recursive(const char* path)
+@@ -314,13 +343,27 @@ int compat_mkdir_recursive(const char* path)
          if (*sep == '\\' || *sep == '/') {
              char saved = *sep;
              *sep = '\0';
 -            if (compat_mkdir(pathCopy) < 0) {
 -                break;
-+            int rc = compat_mkdir(pathCopy);
-+            if (rc < 0) {
-+                if (errno != EEXIST || !compat_is_dir(pathCopy)) {
-+                    *sep = saved;
-+                    return rc;
++            // An ancestor that already exists needs no mkdir. This matters on PS4,
++            // where the write guard rejects mkdir on parents such as "/data" that
++            // lie outside the game directory.
++            if (!compat_is_dir(pathCopy)) {
++                int rc = compat_mkdir(pathCopy);
++                if (rc < 0) {
++                    if (errno != EEXIST || !compat_is_dir(pathCopy)) {
++                        *sep = saved;
++                        return rc;
++                    }
 +                }
              }
              *sep = saved;
          }
      }
 -    return compat_mkdir(path);
++    if (compat_is_dir(path)) {
++        return 0;
++    }
 +    int rc = compat_mkdir(path);
 +    // Success if created or already existed as a directory.
 +    return (rc < 0 && errno == EEXIST && compat_is_dir(path)) ? 0 : rc;
  }
  
  bool compat_is_dir(const char* path)
-@@ -368,12 +428,92 @@ unsigned int compat_timeGetTime()
+@@ -368,12 +411,118 @@ unsigned int compat_timeGetTime()
  #ifdef _WIN32
      return timeGetTime();
  #else
@@ -145,7 +124,7 @@ index a9a6c10d..33236725 100644
 +// on a full match; false otherwise. Exact components hit the fast access() path,
 +// so this only scans where the case actually differs. Removes the old manual
 +// "rename sound to uppercase" step — any casing now just works.
-+static bool ps4ResolveCaseInsensitive(const char* path, char* out, size_t outSize)
++static bool ps4ResolveCaseInsensitiveImpl(const char* path, char* out, size_t outSize)
 +{
 +    if (path == nullptr || path[0] != '/') {
 +        return false;
@@ -217,12 +196,38 @@ index a9a6c10d..33236725 100644
 +    out[outSize - 1] = '\0';
 +    return true;
 +}
++
++static bool ps4ResolveCaseInsensitive(const char* path, char* out, size_t outSize)
++{
++    uint64_t t0 = sceKernelGetProcessTime();
++    bool res = ps4ResolveCaseInsensitiveImpl(path, out, outSize);
++    uint64_t dt = sceKernelGetProcessTime() - t0;
++
++    static uint32_t s_resolveCalls = 0;
++    static uint32_t s_resolveHits = 0;
++    static uint64_t s_totalUs = 0;
++
++    s_resolveCalls++;
++    if (res) {
++        s_resolveHits++;
++    }
++    s_totalUs += dt;
++
++    if (s_resolveCalls % 100 == 0 || dt >= 5000) {
++        ps4Log("[ps4] case-resolve: %u calls (%u hits, %u misses), avg %lu us, last %lu us%s\n",
++               s_resolveCalls, s_resolveHits, s_resolveCalls - s_resolveHits,
++               (unsigned long)(s_totalUs / s_resolveCalls), (unsigned long)dt,
++               dt >= 5000 ? " [SLOW]" : "");
++    }
++
++    return res;
++}
 +#endif
 +
  FILE* compat_fopen(const char* path, const char* mode)
  {
      bool mayWrite = compatFileModeMayWrite(mode);
-@@ -383,7 +523,25 @@ FILE* compat_fopen(const char* path, const char* mode)
+@@ -383,7 +532,25 @@ FILE* compat_fopen(const char* path, const char* mode)
  
      char nativePath[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativePath, path);
@@ -248,7 +253,7 @@ index a9a6c10d..33236725 100644
      if (mayWrite && stream != nullptr) {
          compatDirectoryEntryCacheClear();
      }
-@@ -399,6 +557,15 @@ gzFile compat_gzopen(const char* path, const char* mode)
+@@ -399,6 +566,15 @@ gzFile compat_gzopen(const char* path, const char* mode)
  
      char nativePath[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativePath, path);
@@ -264,7 +269,7 @@ index a9a6c10d..33236725 100644
      gzFile stream = gzopen(nativePath, mode);
      if (mayWrite && stream != nullptr) {
          compatDirectoryEntryCacheClear();
-@@ -442,6 +609,15 @@ int compat_remove(const char* path)
+@@ -442,6 +618,15 @@ int compat_remove(const char* path)
  
      char nativePath[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativePath, path);
@@ -280,7 +285,7 @@ index a9a6c10d..33236725 100644
      int rc = remove(nativePath);
      if (rc == 0) {
          compatDirectoryEntryCacheClear();
-@@ -459,6 +635,14 @@ int compat_rename(const char* oldFileName, const char* newFileName)
+@@ -459,6 +644,14 @@ int compat_rename(const char* oldFileName, const char* newFileName)
      char nativeNewFileName[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativeNewFileName, newFileName);
  

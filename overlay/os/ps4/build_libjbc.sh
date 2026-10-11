@@ -12,11 +12,13 @@ set -e
 : "${OPENORBIS:?source \$OPENORBIS/ps4vars.sh first}"
 
 SRC_URL="https://github.com/cy33hc/ps4-libjbc.git"
+SRC_REV="${LIBJBC_REV:-277a58370c3357192ca2ed3a1194207ee3cbb18e}"
 WORK="${1:-/tmp/ps4-libjbc}"
 
 if [ ! -d "$WORK" ]; then
-    git clone --depth 1 "$SRC_URL" "$WORK"
+    git clone "$SRC_URL" "$WORK"
 fi
+git -C "$WORK" checkout -q "$SRC_REV"
 cd "$WORK"
 
 CFLAGS="--target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c \
