@@ -24,6 +24,16 @@ void ps4VideoShutdown();
 // buffer, composite any staged movie overlay, and flip. vsync-paced.
 void ps4VideoPresent(SDL_Surface* frame);
 
+enum Ps4ScaleMode {
+    PS4_SCALE_LETTERBOX = 0, // Preserve aspect ratio with pillarbox/letterbox black bars (default)
+    PS4_SCALE_FILL = 1,      // Stretch to fill 100% of 16:9 output display
+    PS4_SCALE_INTEGER = 2,   // Center with nearest integer scale factor
+};
+
+// Set/get the display scaling mode.
+void ps4VideoSetScaleMode(Ps4ScaleMode mode);
+Ps4ScaleMode ps4VideoGetScaleMode();
+
 // Movie overlay staging (called from movie.cc in place of the SDL texture path).
 // `pixels` is ARGB8888, srcW x srcH; `dst` is in engine/logical (game-res) coords.
 void ps4VideoMovieOverlaySet(const void* pixels, int srcW, int srcH, SDL_Rect dst);

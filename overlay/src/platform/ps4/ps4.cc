@@ -20,6 +20,7 @@
 
 #include "platform_compat.h"
 #include "platform/ps4/ps4_boot_menu.h"
+#include "platform/ps4/ps4_video.h"
 
 // --- C++ static-init workaround (PS4/OpenOrbis) -----------------------------
 // The engine has many file-scope C++ objects whose constructors run before
@@ -395,7 +396,19 @@ Ps4ControlsConfig g_ps4Controls = {
     /* lootSnapDistance */ 20,
     /* lootSkipEmpty */ 1,
     /* circleCloseAll */ 0,
+    /* scaleMode */ PS4_SCALE_LETTERBOX,
 };
+
+static const char* ps4ScaleModeName(int m)
+{
+    switch (m) {
+    case PS4_SCALE_FILL: return "fill";
+    case PS4_SCALE_INTEGER: return "integer";
+    case PS4_SCALE_LETTERBOX:
+    default:
+        return "letterbox";
+    }
+}
 
 // Map an action name to a PS4_ACT_* value (-1 = unknown, keep current).
 static int ps4ParseAction(const char* s)
@@ -539,6 +552,12 @@ static void ps4WriteDefaultControlsConfig(const char* path)
         "#  1 = Circle closes EVERY menu including those (one-button close-all).\n"
         "circle_close_all=%d\n"
         "\n"
+        "# Display scaling mode on 1080p panel:\n"
+        "#  letterbox = preserve original aspect ratio (4:3 gets pillarbox black bars, 16:9 fills with no bars)\n"
+        "#  fill      = stretch to fill 100%% of 16:9 screen\n"
+        "#  integer   = integer scaling factor centered\n"
+        "scale_mode=%s\n"
+        "\n"
         "# Advanced feel tuning:\n"
         "#  walk_project_tiles = hexes projected per walk step (higher = smoother, less responsive)\n"
         "#  run_settle_ms      = delay before the first walk step so a hard push starts a run\n"
@@ -588,6 +607,7 @@ static void ps4WriteDefaultControlsConfig(const char* path)
         g_ps4Controls.meleeApproach,
         g_ps4Controls.lootAssist, g_ps4Controls.lootSnapDistance, g_ps4Controls.lootSkipEmpty,
         g_ps4Controls.circleCloseAll,
+        ps4ScaleModeName(g_ps4Controls.scaleMode),
         g_ps4Controls.walkProjectTiles, g_ps4Controls.runSettleMs,
         g_ps4Controls.touchMaxGain, g_ps4Controls.touchTapMs,
         g_ps4Controls.touchTapMove, g_ps4Controls.dpadRepeatMs,
@@ -609,7 +629,9 @@ void ps4ReadControlsConfig()
     if (f == nullptr) {
         // First run: keep defaults and drop a commented template to edit.
         ps4WriteDefaultControlsConfig(path);
-        ps4Log("[ps4] controls: defaults (touch=%.2f)\n", g_ps4Controls.touchSensitivity);
+        ps4VideoSetScaleMode((Ps4ScaleMode)g_ps4Controls.scaleMode);
+        ps4Log("[ps4] controls: defaults (touch=%.2f scale=%s)\n",
+            g_ps4Controls.touchSensitivity, ps4ScaleModeName(g_ps4Controls.scaleMode));
         return;
     }
     char line[256];
@@ -617,7 +639,13 @@ void ps4ReadControlsConfig()
         float fv;
         int iv;
         char wrs[16];
-        if (sscanf(line, "world_right_stick=%15s", wrs) == 1) {
+        char sm[16];
+        if (sscanf(line, "scale_mode=%15s", sm) == 1) {
+            if (strcmp(sm, "fill") == 0) g_ps4Controls.scaleMode = PS4_SCALE_FILL;
+            else if (strcmp(sm, "integer") == 0) g_ps4Controls.scaleMode = PS4_SCALE_INTEGER;
+            else g_ps4Controls.scaleMode = PS4_SCALE_LETTERBOX;
+            ps4VideoSetScaleMode((Ps4ScaleMode)g_ps4Controls.scaleMode);
+        } else if (sscanf(line, "world_right_stick=%15s", wrs) == 1) {
             int r = ps4ParseWrs(wrs);
             if (r >= 0) g_ps4Controls.worldRightStick = r;
         } else if (sscanf(line, "world_left_stick=%15s", wrs) == 1) {

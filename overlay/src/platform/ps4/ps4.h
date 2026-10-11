@@ -106,6 +106,7 @@ struct Ps4ControlsConfig {
     int lootSkipEmpty;       // 1 = skip empty containers/corpses when cycling
     int circleCloseAll;      // 1 = Circle closes EVERY menu (incl. inventory/barter/
                              //     loot); 0 = Circle stays RMB in those (inspect items)
+    int scaleMode;           // Ps4ScaleMode (0 = letterbox/pillarbox, 1 = fill 16:9, 2 = integer)
 };
 
 extern Ps4ControlsConfig g_ps4Controls;

@@ -394,7 +394,7 @@ static bool ps4ShowBootCountdown(const std::string& activeTitle, SDL_GameControl
     }
 
     SDL_FreeSurface(surface);
-    ps4VideoShutdown();
+    // Keep sceVideoOut and direct memory buffer alive to reuse across menu and game engine.
 
     return openMenu;
 }
@@ -519,7 +519,7 @@ static std::string ps4RunBootMenu(const std::vector<Ps4GameEntry>& entries, int 
     }
 
     SDL_FreeSurface(surface);
-    ps4VideoShutdown();
+    // Keep sceVideoOut open; engine's ps4VideoInit will resize LUTs in-place without reallocation.
 
     return entries[selectedIndex].path;
 }
