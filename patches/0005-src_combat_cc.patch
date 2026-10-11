@@ -1,8 +1,17 @@
 diff --git a/src/combat.cc b/src/combat.cc
-index 91f7197a..92ec06da 100644
+index 91f7197a..07e4e57a 100644
 --- a/src/combat.cc
 +++ b/src/combat.cc
-@@ -1932,6 +1932,12 @@ static Object* gCalledShotCritter;
+@@ -3,6 +3,8 @@
+ #include <limits.h>
+ #include <stdio.h>
+ #include <string.h>
++#include <algorithm>
++#include <vector>
+ 
+ #include "actions.h"
+ #include "animation.h"
+@@ -1932,6 +1934,12 @@ static Object* gCalledShotCritter;
  // 0x56D374 call_win
  static int gCalledShotWindow;
  
@@ -15,7 +24,7 @@ index 91f7197a..92ec06da 100644
  // 0x56D378 combat_elev
  static int _combat_elev;
  
-@@ -2078,6 +2084,10 @@ void combatReset()
+@@ -2078,6 +2086,10 @@ void combatReset()
      // SFALL
      criticalsReset();
      combat_reset_hit_location_penalty();
@@ -26,7 +35,7 @@ index 91f7197a..92ec06da 100644
  }
  
  // 0x420E14
-@@ -2088,6 +2098,10 @@ void combatExit()
+@@ -2088,6 +2100,10 @@ void combatExit()
  
      // SFALL
      criticalsExit();
@@ -37,7 +46,7 @@ index 91f7197a..92ec06da 100644
  }
  
  // 0x420E24
-@@ -3202,6 +3216,10 @@ static int _combat_input()
+@@ -3202,6 +3218,10 @@ static int _combat_input()
  
          int keyCode = inputGetInput();
  
@@ -48,7 +57,7 @@ index 91f7197a..92ec06da 100644
          // SFALL: CombatLoopHook.
          sfall_gl_scr_process_main();
  
-@@ -5763,6 +5781,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
+@@ -5763,6 +5783,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
  
      windowRefresh(gCalledShotWindow);
  
@@ -57,7 +66,7 @@ index 91f7197a..92ec06da 100644
      bool gameUiWasDisabled = gameUiIsDisabled();
      if (gameUiWasDisabled) {
          gameUiEnable();
-@@ -5803,6 +5823,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
+@@ -5803,6 +5825,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
  
      windowDestroy(gCalledShotWindow);
  
@@ -66,7 +75,7 @@ index 91f7197a..92ec06da 100644
      if (eventCode == KEY_ESCAPE) {
          return -1;
      }
-@@ -5989,6 +6011,356 @@ void _combat_attack_this(Object* target)
+@@ -5989,6 +6013,362 @@ void _combat_attack_this(Object* target)
      }
  }
  
@@ -135,8 +144,10 @@ index 91f7197a..92ec06da 100644
 +    int logicalW = screenGetWidth();
 +    int visibleH = screenGetVisibleHeight();
 +
-+    int count = 0;
-+    for (int i = 0; i < listLen && count < maxCount; i++) {
++    std::vector<Object*> candidates;
++    candidates.reserve(64);
++
++    for (int i = 0; i < listLen; i++) {
 +        Object* c = list[i];
 +        if (c == nullptr || c == gDude) {
 +            continue;
@@ -169,23 +180,24 @@ index 91f7197a..92ec06da 100644
 +                continue;
 +            }
 +        }
-+        out[count++] = c;
++        candidates.push_back(c);
 +    }
 +
 +    if (freeList && listLen != 0) {
 +        objectListFree(list);
 +    }
 +
-+    // Insertion sort by distance to the player (nearest first).
-+    for (int i = 1; i < count; i++) {
-+        Object* key = out[i];
-+        int keyDist = objectGetDistanceBetween(gDude, key);
-+        int j = i - 1;
-+        while (j >= 0 && objectGetDistanceBetween(gDude, out[j]) > keyDist) {
-+            out[j + 1] = out[j];
-+            j--;
-+        }
-+        out[j + 1] = key;
++    // Sort all candidates by distance to the player (nearest first).
++    std::sort(candidates.begin(), candidates.end(), [](Object* a, Object* b) {
++        return objectGetDistanceBetween(gDude, a) < objectGetDistanceBetween(gDude, b);
++    });
++
++    int count = (int)candidates.size();
++    if (count > maxCount) {
++        count = maxCount;
++    }
++    for (int i = 0; i < count; i++) {
++        out[i] = candidates[i];
 +    }
 +
 +    return count;
@@ -208,13 +220,15 @@ index 91f7197a..92ec06da 100644
 +
 +    int logicalW = screenGetWidth();
 +    int visibleH = screenGetVisibleHeight();
-+    int count = 0;
++
++    std::vector<Object*> candidates;
++    candidates.reserve(64);
 +
 +    static const ObjectType kTypes[] = { OBJ_TYPE_ITEM, OBJ_TYPE_CRITTER, OBJ_TYPE_SCENERY };
-+    for (int t = 0; t < 3 && count < maxCount; t++) {
++    for (int t = 0; t < 3; t++) {
 +        Object** list;
 +        int listLen = objectListCreate(-1, gElevation, kTypes[t], &list);
-+        for (int i = 0; i < listLen && count < maxCount; i++) {
++        for (int i = 0; i < listLen; i++) {
 +            Object* o = list[i];
 +            if (o == nullptr || o == gDude) {
 +                continue;
@@ -262,23 +276,24 @@ index 91f7197a..92ec06da 100644
 +                    continue;
 +                }
 +            }
-+            out[count++] = o;
++            candidates.push_back(o);
 +        }
 +        if (listLen != 0) {
 +            objectListFree(list);
 +        }
 +    }
 +
-+    // Insertion sort by distance to the player (nearest first).
-+    for (int i = 1; i < count; i++) {
-+        Object* key = out[i];
-+        int keyDist = objectGetDistanceBetween(gDude, key);
-+        int j = i - 1;
-+        while (j >= 0 && objectGetDistanceBetween(gDude, out[j]) > keyDist) {
-+            out[j + 1] = out[j];
-+            j--;
-+        }
-+        out[j + 1] = key;
++    // Sort all candidates by distance to the player (nearest first).
++    std::sort(candidates.begin(), candidates.end(), [](Object* a, Object* b) {
++        return objectGetDistanceBetween(gDude, a) < objectGetDistanceBetween(gDude, b);
++    });
++
++    int count = (int)candidates.size();
++    if (count > maxCount) {
++        count = maxCount;
++    }
++    for (int i = 0; i < count; i++) {
++        out[i] = candidates[i];
 +    }
 +
 +    return count;

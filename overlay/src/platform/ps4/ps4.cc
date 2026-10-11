@@ -397,6 +397,8 @@ Ps4ControlsConfig g_ps4Controls = {
     /* lootSkipEmpty */ 1,
     /* circleCloseAll */ 0,
     /* scaleMode */ PS4_SCALE_LETTERBOX,
+    /* stickDeadzone */ 0.15f,
+    /* stickCurve */ 1.50f,
 };
 
 static const char* ps4ScaleModeName(int m)
@@ -558,6 +560,12 @@ static void ps4WriteDefaultControlsConfig(const char* path)
         "#  integer   = integer scaling factor centered\n"
         "scale_mode=%s\n"
         "\n"
+        "# Analog stick feel:\n"
+        "#  stick_deadzone = radial deadzone threshold (0.05..0.70, default 0.15)\n"
+        "#  stick_curve    = response curve exponent (1.0 = linear, 1.5 = smooth modern console curve)\n"
+        "stick_deadzone=%.2f\n"
+        "stick_curve=%.2f\n"
+        "\n"
         "# Advanced feel tuning:\n"
         "#  walk_project_tiles = hexes projected per walk step (higher = smoother, less responsive)\n"
         "#  run_settle_ms      = delay before the first walk step so a hard push starts a run\n"
@@ -608,6 +616,7 @@ static void ps4WriteDefaultControlsConfig(const char* path)
         g_ps4Controls.lootAssist, g_ps4Controls.lootSnapDistance, g_ps4Controls.lootSkipEmpty,
         g_ps4Controls.circleCloseAll,
         ps4ScaleModeName(g_ps4Controls.scaleMode),
+        g_ps4Controls.stickDeadzone, g_ps4Controls.stickCurve,
         g_ps4Controls.walkProjectTiles, g_ps4Controls.runSettleMs,
         g_ps4Controls.touchMaxGain, g_ps4Controls.touchTapMs,
         g_ps4Controls.touchTapMove, g_ps4Controls.dpadRepeatMs,
@@ -621,6 +630,18 @@ static void ps4WriteDefaultControlsConfig(const char* path)
     ps4Log("[ps4] wrote default ps4_controls.cfg\n");
 }
 
+static char* ps4Trim(char* s)
+{
+    while (*s == ' ' || *s == '\t') s++;
+    if (*s == '\0') return s;
+    char* end = s + strlen(s) - 1;
+    while (end > s && (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n')) {
+        *end = '\0';
+        end--;
+    }
+    return s;
+}
+
 void ps4ReadControlsConfig()
 {
     char path[512];
@@ -630,71 +651,129 @@ void ps4ReadControlsConfig()
         // First run: keep defaults and drop a commented template to edit.
         ps4WriteDefaultControlsConfig(path);
         ps4VideoSetScaleMode((Ps4ScaleMode)g_ps4Controls.scaleMode);
-        ps4Log("[ps4] controls: defaults (touch=%.2f scale=%s)\n",
-            g_ps4Controls.touchSensitivity, ps4ScaleModeName(g_ps4Controls.scaleMode));
+        ps4Log("[ps4] controls: defaults (touch=%.2f scale=%s dz=%.2f curve=%.2f)\n",
+            g_ps4Controls.touchSensitivity, ps4ScaleModeName(g_ps4Controls.scaleMode),
+            g_ps4Controls.stickDeadzone, g_ps4Controls.stickCurve);
         return;
     }
     char line[256];
     while (fgets(line, sizeof(line), f) != nullptr) {
-        float fv;
-        int iv;
-        char wrs[16];
-        char sm[16];
-        if (sscanf(line, "scale_mode=%15s", sm) == 1) {
-            if (strcmp(sm, "fill") == 0) g_ps4Controls.scaleMode = PS4_SCALE_FILL;
-            else if (strcmp(sm, "integer") == 0) g_ps4Controls.scaleMode = PS4_SCALE_INTEGER;
+        char* eq = strchr(line, '=');
+        if (eq == nullptr) {
+            continue;
+        }
+        *eq = '\0';
+        char* key = ps4Trim(line);
+        char* val = ps4Trim(eq + 1);
+        if (*key == '#' || *key == '[' || *key == '\0') {
+            continue;
+        }
+
+        if (strcmp(key, "scale_mode") == 0) {
+            if (strcmp(val, "fill") == 0) g_ps4Controls.scaleMode = PS4_SCALE_FILL;
+            else if (strcmp(val, "integer") == 0) g_ps4Controls.scaleMode = PS4_SCALE_INTEGER;
             else g_ps4Controls.scaleMode = PS4_SCALE_LETTERBOX;
             ps4VideoSetScaleMode((Ps4ScaleMode)g_ps4Controls.scaleMode);
-        } else if (sscanf(line, "world_right_stick=%15s", wrs) == 1) {
-            int r = ps4ParseWrs(wrs);
+        } else if (strcmp(key, "stick_deadzone") == 0) {
+            g_ps4Controls.stickDeadzone = (float)atof(val);
+        } else if (strcmp(key, "stick_curve") == 0) {
+            g_ps4Controls.stickCurve = (float)atof(val);
+        } else if (strcmp(key, "world_right_stick") == 0) {
+            int r = ps4ParseWrs(val);
             if (r >= 0) g_ps4Controls.worldRightStick = r;
-        } else if (sscanf(line, "world_left_stick=%15s", wrs) == 1) {
-            int r = ps4ParseWrs(wrs);
+        } else if (strcmp(key, "world_left_stick") == 0) {
+            int r = ps4ParseWrs(val);
             if (r >= 0) g_ps4Controls.worldLeftStick = r;
-        } else if (sscanf(line, "combat_auto_aim=%d", &iv) == 1) g_ps4Controls.combatAutoAim = iv;
-        else if (sscanf(line, "world_auto_aim=%d", &iv) == 1) g_ps4Controls.worldAutoAim = iv;
-        else if (sscanf(line, "auto_aim_whole_map=%d", &iv) == 1) g_ps4Controls.autoAimWholeMap = iv;
-        else if (sscanf(line, "auto_aim_center_camera=%d", &iv) == 1) g_ps4Controls.autoAimCenterCamera = iv;
-        else if (sscanf(line, "melee_approach=%d", &iv) == 1) g_ps4Controls.meleeApproach = iv;
-        else if (sscanf(line, "loot_assist=%d", &iv) == 1) g_ps4Controls.lootAssist = iv;
-        else if (sscanf(line, "loot_snap_distance=%d", &iv) == 1) g_ps4Controls.lootSnapDistance = iv;
-        else if (sscanf(line, "loot_skip_empty=%d", &iv) == 1) g_ps4Controls.lootSkipEmpty = iv;
-        else if (sscanf(line, "circle_close_all=%d", &iv) == 1) g_ps4Controls.circleCloseAll = iv;
-        else if (sscanf(line, "touch_sensitivity=%f", &fv) == 1) g_ps4Controls.touchSensitivity = fv;
-        else if (sscanf(line, "touch_accel=%f", &fv) == 1) g_ps4Controls.touchAccel = fv;
-        else if (sscanf(line, "touch_smoothing=%f", &fv) == 1) g_ps4Controls.touchSmoothing = fv;
-        else if (sscanf(line, "touch_deadzone=%f", &fv) == 1) g_ps4Controls.touchDeadzone = fv;
-        else if (sscanf(line, "cursor_speed=%f", &fv) == 1) g_ps4Controls.cursorSpeed = fv;
-        else if (sscanf(line, "cursor_speed_boost=%f", &fv) == 1) g_ps4Controls.cursorSpeedBoost = fv;
-        else if (sscanf(line, "walk_deadzone=%f", &fv) == 1) g_ps4Controls.walkDeadzone = fv;
-        else if (sscanf(line, "run_threshold=%f", &fv) == 1) g_ps4Controls.runThreshold = fv;
-        else if (sscanf(line, "camera_deadzone_x=%d", &iv) == 1) g_ps4Controls.cameraDeadzoneX = iv;
-        else if (sscanf(line, "camera_deadzone_y=%d", &iv) == 1) g_ps4Controls.cameraDeadzoneY = iv;
-        else if (sscanf(line, "walk_project_tiles=%d", &iv) == 1) g_ps4Controls.walkProjectTiles = iv;
-        else if (sscanf(line, "run_settle_ms=%d", &iv) == 1) g_ps4Controls.runSettleMs = iv;
-        else if (sscanf(line, "touch_max_gain=%f", &fv) == 1) g_ps4Controls.touchMaxGain = fv;
-        else if (sscanf(line, "touch_tap_ms=%d", &iv) == 1) g_ps4Controls.touchTapMs = iv;
-        else if (sscanf(line, "touch_tap_move=%d", &iv) == 1) g_ps4Controls.touchTapMove = iv;
-        else if (sscanf(line, "dpad_repeat_ms=%d", &iv) == 1) g_ps4Controls.dpadRepeatMs = iv;
-        else if (sscanf(line, "camera_pan_threshold=%f", &fv) == 1) g_ps4Controls.cameraPanThreshold = fv;
-        else if (ps4ParseButtonLine(line, "btn_cross", &g_ps4Controls.actCross)) { }
-        else if (ps4ParseButtonLine(line, "btn_circle", &g_ps4Controls.actCircle)) { }
-        else if (ps4ParseButtonLine(line, "btn_square", &g_ps4Controls.actSquare)) { }
-        else if (ps4ParseButtonLine(line, "btn_triangle", &g_ps4Controls.actTriangle)) { }
-        else if (ps4ParseButtonLine(line, "btn_l1", &g_ps4Controls.actL1)) { }
-        else if (ps4ParseButtonLine(line, "btn_r1", &g_ps4Controls.actR1)) { }
-        else if (ps4ParseButtonLine(line, "btn_l3", &g_ps4Controls.actL3)) { }
-        else if (ps4ParseButtonLine(line, "btn_r3", &g_ps4Controls.actR3)) { }
-        else if (ps4ParseButtonLine(line, "btn_share", &g_ps4Controls.actShare)) { }
-        else if (ps4ParseButtonLine(line, "btn_options", &g_ps4Controls.actOptions)) { }
+        } else if (strcmp(key, "combat_auto_aim") == 0) {
+            g_ps4Controls.combatAutoAim = atoi(val);
+        } else if (strcmp(key, "world_auto_aim") == 0) {
+            g_ps4Controls.worldAutoAim = atoi(val);
+        } else if (strcmp(key, "auto_aim_whole_map") == 0) {
+            g_ps4Controls.autoAimWholeMap = atoi(val);
+        } else if (strcmp(key, "auto_aim_center_camera") == 0) {
+            g_ps4Controls.autoAimCenterCamera = atoi(val);
+        } else if (strcmp(key, "melee_approach") == 0) {
+            g_ps4Controls.meleeApproach = atoi(val);
+        } else if (strcmp(key, "loot_assist") == 0) {
+            g_ps4Controls.lootAssist = atoi(val);
+        } else if (strcmp(key, "loot_snap_distance") == 0) {
+            g_ps4Controls.lootSnapDistance = atoi(val);
+        } else if (strcmp(key, "loot_skip_empty") == 0) {
+            g_ps4Controls.lootSkipEmpty = atoi(val);
+        } else if (strcmp(key, "circle_close_all") == 0) {
+            g_ps4Controls.circleCloseAll = atoi(val);
+        } else if (strcmp(key, "touch_sensitivity") == 0) {
+            g_ps4Controls.touchSensitivity = (float)atof(val);
+        } else if (strcmp(key, "touch_accel") == 0) {
+            g_ps4Controls.touchAccel = (float)atof(val);
+        } else if (strcmp(key, "touch_smoothing") == 0) {
+            g_ps4Controls.touchSmoothing = (float)atof(val);
+        } else if (strcmp(key, "touch_deadzone") == 0) {
+            g_ps4Controls.touchDeadzone = (float)atof(val);
+        } else if (strcmp(key, "cursor_speed") == 0) {
+            g_ps4Controls.cursorSpeed = (float)atof(val);
+        } else if (strcmp(key, "cursor_speed_boost") == 0) {
+            g_ps4Controls.cursorSpeedBoost = (float)atof(val);
+        } else if (strcmp(key, "walk_deadzone") == 0) {
+            g_ps4Controls.walkDeadzone = (float)atof(val);
+        } else if (strcmp(key, "run_threshold") == 0) {
+            g_ps4Controls.runThreshold = (float)atof(val);
+        } else if (strcmp(key, "camera_deadzone_x") == 0) {
+            g_ps4Controls.cameraDeadzoneX = atoi(val);
+        } else if (strcmp(key, "camera_deadzone_y") == 0) {
+            g_ps4Controls.cameraDeadzoneY = atoi(val);
+        } else if (strcmp(key, "walk_project_tiles") == 0) {
+            g_ps4Controls.walkProjectTiles = atoi(val);
+        } else if (strcmp(key, "run_settle_ms") == 0) {
+            g_ps4Controls.runSettleMs = atoi(val);
+        } else if (strcmp(key, "touch_max_gain") == 0) {
+            g_ps4Controls.touchMaxGain = (float)atof(val);
+        } else if (strcmp(key, "touch_tap_ms") == 0) {
+            g_ps4Controls.touchTapMs = atoi(val);
+        } else if (strcmp(key, "touch_tap_move") == 0) {
+            g_ps4Controls.touchTapMove = atoi(val);
+        } else if (strcmp(key, "dpad_repeat_ms") == 0) {
+            g_ps4Controls.dpadRepeatMs = atoi(val);
+        } else if (strcmp(key, "camera_pan_threshold") == 0) {
+            g_ps4Controls.cameraPanThreshold = (float)atof(val);
+        } else if (strcmp(key, "btn_cross") == 0) {
+            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actCross = a;
+        } else if (strcmp(key, "btn_circle") == 0) {
+            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actCircle = a;
+        } else if (strcmp(key, "btn_square") == 0) {
+            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actSquare = a;
+        } else if (strcmp(key, "btn_triangle") == 0) {
+            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actTriangle = a;
+        } else if (strcmp(key, "btn_l1") == 0) {
+            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actL1 = a;
+        } else if (strcmp(key, "btn_r1") == 0) {
+            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actR1 = a;
+        } else if (strcmp(key, "btn_l3") == 0) {
+            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actL3 = a;
+        } else if (strcmp(key, "btn_r3") == 0) {
+            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actR3 = a;
+        } else if (strcmp(key, "btn_share") == 0) {
+            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actShare = a;
+        } else if (strcmp(key, "btn_options") == 0) {
+            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actOptions = a;
+        }
     }
     fclose(f);
+
     // Clamp to sane ranges so a typo can't make control impossible.
     if (g_ps4Controls.touchSensitivity <= 0.0f) g_ps4Controls.touchSensitivity = 0.25f;
     if (g_ps4Controls.touchAccel < 0.0f) g_ps4Controls.touchAccel = 0.0f;
     if (g_ps4Controls.touchSmoothing < 0.0f) g_ps4Controls.touchSmoothing = 0.0f;
     if (g_ps4Controls.touchSmoothing > 0.9f) g_ps4Controls.touchSmoothing = 0.9f;
     if (g_ps4Controls.touchDeadzone < 0.0f) g_ps4Controls.touchDeadzone = 0.0f;
+    if (g_ps4Controls.stickDeadzone < 0.05f) g_ps4Controls.stickDeadzone = 0.05f;
+    if (g_ps4Controls.stickDeadzone > 0.70f) g_ps4Controls.stickDeadzone = 0.70f;
+    if (g_ps4Controls.stickCurve < 1.0f) g_ps4Controls.stickCurve = 1.0f;
+    if (g_ps4Controls.stickCurve > 3.0f) g_ps4Controls.stickCurve = 3.0f;
+    if (g_ps4Controls.cursorSpeed < 50.0f) g_ps4Controls.cursorSpeed = 50.0f;
+    if (g_ps4Controls.cursorSpeed > 2500.0f) g_ps4Controls.cursorSpeed = 2500.0f;
+    if (g_ps4Controls.cursorSpeedBoost < 100.0f) g_ps4Controls.cursorSpeedBoost = 100.0f;
+    if (g_ps4Controls.cursorSpeedBoost > 4000.0f) g_ps4Controls.cursorSpeedBoost = 4000.0f;
     if (g_ps4Controls.walkDeadzone < 0.05f) g_ps4Controls.walkDeadzone = 0.05f;
     if (g_ps4Controls.walkDeadzone > 0.90f) g_ps4Controls.walkDeadzone = 0.90f;
     if (g_ps4Controls.runThreshold < g_ps4Controls.walkDeadzone) g_ps4Controls.runThreshold = g_ps4Controls.walkDeadzone;
@@ -710,9 +789,23 @@ void ps4ReadControlsConfig()
     if (g_ps4Controls.dpadRepeatMs < 30) g_ps4Controls.dpadRepeatMs = 30;
     if (g_ps4Controls.cameraPanThreshold < 0.1f) g_ps4Controls.cameraPanThreshold = 0.1f;
     if (g_ps4Controls.cameraPanThreshold > 0.95f) g_ps4Controls.cameraPanThreshold = 0.95f;
-    ps4Log("[ps4] controls: touch=%.2f cursor=%.0f/%.0f dz=%.2f run=%.2f cam=%d/%d\n",
+    if (g_ps4Controls.meleeApproach < 0) g_ps4Controls.meleeApproach = 0;
+    if (g_ps4Controls.meleeApproach > 2) g_ps4Controls.meleeApproach = 2;
+    if (g_ps4Controls.lootSnapDistance < 1) g_ps4Controls.lootSnapDistance = 1;
+    if (g_ps4Controls.lootSnapDistance > 50) g_ps4Controls.lootSnapDistance = 50;
+    g_ps4Controls.combatAutoAim = g_ps4Controls.combatAutoAim != 0 ? 1 : 0;
+    g_ps4Controls.worldAutoAim = g_ps4Controls.worldAutoAim != 0 ? 1 : 0;
+    g_ps4Controls.autoAimWholeMap = g_ps4Controls.autoAimWholeMap != 0 ? 1 : 0;
+    g_ps4Controls.autoAimCenterCamera = g_ps4Controls.autoAimCenterCamera != 0 ? 1 : 0;
+    g_ps4Controls.lootAssist = g_ps4Controls.lootAssist != 0 ? 1 : 0;
+    g_ps4Controls.lootSkipEmpty = g_ps4Controls.lootSkipEmpty != 0 ? 1 : 0;
+    g_ps4Controls.circleCloseAll = g_ps4Controls.circleCloseAll != 0 ? 1 : 0;
+
+    ps4VideoSetScaleMode((Ps4ScaleMode)g_ps4Controls.scaleMode);
+
+    ps4Log("[ps4] controls: touch=%.2f cursor=%.0f/%.0f dz=%.2f curve=%.2f scale=%s cam=%d/%d\n",
         g_ps4Controls.touchSensitivity, g_ps4Controls.cursorSpeed, g_ps4Controls.cursorSpeedBoost,
-        g_ps4Controls.walkDeadzone, g_ps4Controls.runThreshold,
+        g_ps4Controls.stickDeadzone, g_ps4Controls.stickCurve, ps4ScaleModeName(g_ps4Controls.scaleMode),
         g_ps4Controls.cameraDeadzoneX, g_ps4Controls.cameraDeadzoneY);
 }
 

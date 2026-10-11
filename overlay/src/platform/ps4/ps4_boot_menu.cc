@@ -10,6 +10,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <netinet/in.h>
+
 #include <SDL.h>
 #include <orbis/libkernel.h>
 #include <orbis/Pad.h>
@@ -151,9 +155,6 @@ static void ps4ReadInputState(SDL_GameController* controller, int padHandle,
 
         if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_LEFTSHOULDER) != 0) menu = true; // L1
         if (SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 8000) menu = true; // L2
-        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_LEFTSTICK) != 0) menu = true; // L3
-        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_X) != 0) menu = true; // Square
-        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_Y) != 0) menu = true; // Triangle
     }
 
     if (padHandle >= 0) {
@@ -164,8 +165,7 @@ static void ps4ReadInputState(SDL_GameController* controller, int padHandle,
             if (pd.buttons & (ORBIS_PAD_BUTTON_CROSS | ORBIS_PAD_BUTTON_OPTIONS)) confirm = true;
             if (pd.buttons & ORBIS_PAD_BUTTON_CIRCLE) cancel = true;
 
-            if (pd.buttons & (ORBIS_PAD_BUTTON_L1 | ORBIS_PAD_BUTTON_L2 | ORBIS_PAD_BUTTON_L3 |
-                              ORBIS_PAD_BUTTON_SQUARE | ORBIS_PAD_BUTTON_TRIANGLE)) {
+            if (pd.buttons & (ORBIS_PAD_BUTTON_L1 | ORBIS_PAD_BUTTON_L2)) {
                 menu = true;
             }
         }
@@ -278,6 +278,30 @@ static void saveActiveGameConfig(const std::string& pathOrName)
     }
 }
 
+static std::string ps4GetConsoleIpAddress()
+{
+    struct ifaddrs* ifap = nullptr;
+    if (getifaddrs(&ifap) != 0 || ifap == nullptr) {
+        return "";
+    }
+    std::string ipStr;
+    for (struct ifaddrs* ifa = ifap; ifa != nullptr; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == nullptr) continue;
+        if (ifa->ifa_addr->sa_family == AF_INET) {
+            auto* sa = reinterpret_cast<struct sockaddr_in*>(ifa->ifa_addr);
+            char buf[INET_ADDRSTRLEN];
+            if (inet_ntop(AF_INET, &(sa->sin_addr), buf, sizeof(buf)) != nullptr) {
+                if (strcmp(buf, "127.0.0.1") != 0 && strncmp(buf, "0.", 2) != 0) {
+                    ipStr = buf;
+                    break;
+                }
+            }
+        }
+    }
+    freeifaddrs(ifap);
+    return ipStr;
+}
+
 static void ps4ShowNoDataError()
 {
     ps4Log("[ps4] showing no-data error screen\n");
@@ -295,23 +319,46 @@ static void ps4ShowNoDataError()
     drawString(surface, 60, 60, "ROBCO INDUSTRIES (TM) TERMLINK PROTOCOL - ERROR 0x404", 0x00ff4444, 0, 2);
 
     drawString(surface, 60, 150, "CRITICAL ERROR: NO GAME DATA FOUND", 0x00ff4444, 0, 3);
-    drawString(surface, 60, 220, "Could not locate 'master.dat' in /data/fallout2 or any subfolder.", 0x0018ff62, 0, 2);
+    drawString(surface, 60, 220, "Could not locate 'master.dat' in /data/fallout2, /data/* or USB drives.", 0x0018ff62, 0, 2);
 
-    drawString(surface, 60, 290, "HOW TO INSTALL GAME FILES:", 0x0033ff77, 0, 2);
-    drawString(surface, 80, 330, "1. Connect to PS4 via GoldHEN FTP Server (Port 2121).", 0x0018ff62, 0, 2);
-    drawString(surface, 80, 370, "2. Navigate to directory: /data/fallout2/", 0x0018ff62, 0, 2);
-    drawString(surface, 80, 410, "3. Upload the required game files from your Fallout 2 copy:", 0x0018ff62, 0, 2);
-    drawString(surface, 120, 450, "- master.dat", 0x000d8c36, 0, 2);
-    drawString(surface, 120, 480, "- critter.dat", 0x000d8c36, 0, 2);
-    drawString(surface, 120, 510, "- patch000.dat (if present)", 0x000d8c36, 0, 2);
-    drawString(surface, 120, 540, "- data/ and sound/ folders", 0x000d8c36, 0, 2);
-    drawString(surface, 80, 580, "4. Press [PS Button] to exit, then restart the application.", 0x0018ff62, 0, 2);
+    drawString(surface, 60, 280, "HOW TO INSTALL GAME FILES:", 0x0033ff77, 0, 2);
+
+    std::string consoleIp = ps4GetConsoleIpAddress();
+    char ftpLine[128];
+    if (!consoleIp.empty()) {
+        snprintf(ftpLine, sizeof(ftpLine), "1. Connect via FTP: ftp://%s:2121 (GoldHEN FTP)", consoleIp.c_str());
+    } else {
+        snprintf(ftpLine, sizeof(ftpLine), "1. Connect to PS4 via GoldHEN FTP Server (Port 2121).");
+    }
+    drawString(surface, 80, 320, ftpLine, 0x0018ff62, 0, 2);
+
+    drawString(surface, 80, 360, "2. Navigate to directory: /data/fallout2/ (or USB drive /mnt/usb0/)", 0x0018ff62, 0, 2);
+    drawString(surface, 80, 400, "3. Upload the required game files from your Fallout 2 copy:", 0x0018ff62, 0, 2);
+    drawString(surface, 120, 435, "- master.dat", 0x000d8c36, 0, 2);
+    drawString(surface, 120, 465, "- critter.dat", 0x000d8c36, 0, 2);
+    drawString(surface, 120, 495, "- patch000.dat (if present)", 0x000d8c36, 0, 2);
+    drawString(surface, 120, 525, "- data/ and sound/ folders", 0x000d8c36, 0, 2);
+    drawString(surface, 80, 570, "4. Press [CIRCLE / O] or [CROSS / X] to exit to PS4 home screen.", 0x0033ff77, 0, 2);
 
     applyScanlines(surface);
     ps4VideoPresent(surface);
 
+    SDL_GameController* controller = ps4OpenFirstController();
+    int padHandle = ps4GetPadHandle();
+
     while (true) {
-        SDL_Delay(100);
+        bool up = false, down = false, confirm = false, cancel = false, menu = false;
+        ps4ReadInputState(controller, padHandle, &up, &down, &confirm, &cancel, &menu);
+        if (confirm || cancel) {
+            ps4Log("[ps4] user requested exit from no-data error screen\n");
+            if (controller != nullptr) {
+                SDL_GameControllerClose(controller);
+            }
+            SDL_FreeSurface(surface);
+            ps4VideoShutdown();
+            exit(0);
+        }
+        SDL_Delay(50);
     }
 }
 
@@ -330,10 +377,24 @@ static bool ps4ShowBootCountdown(const std::string& activeTitle, SDL_GameControl
     }
 
     bool openMenu = false;
-    const int totalMs = 2500;
-    int elapsedMs = 0;
+    const uint32_t totalMs = 2500;
+    uint32_t startTicks = SDL_GetTicks();
 
-    while (elapsedMs < totalMs) {
+    // Check if Confirm was already held at start (e.g. from launching in XMB)
+    bool initialConfirm = false;
+    {
+        bool u, d, c, ca, m;
+        ps4ReadInputState(controller, padHandle, &u, &d, &c, &ca, &m);
+        initialConfirm = c;
+    }
+
+    while (true) {
+        uint32_t now = SDL_GetTicks();
+        uint32_t elapsedMs = now - startTicks;
+        if (elapsedMs >= totalMs) {
+            break;
+        }
+
         bool up = false, down = false, confirm = false, cancel = false, menu = false;
         ps4ReadInputState(controller, padHandle, &up, &down, &confirm, &cancel, &menu);
 
@@ -344,12 +405,16 @@ static bool ps4ShowBootCountdown(const std::string& activeTitle, SDL_GameControl
         }
 
         if (confirm) {
-            ps4Log("[ps4] boot countdown: Cross pressed -> launching immediately\n");
-            openMenu = false;
-            break;
+            if (!initialConfirm) {
+                ps4Log("[ps4] boot countdown: Cross pressed -> launching immediately\n");
+                openMenu = false;
+                break;
+            }
+        } else {
+            initialConfirm = false;
         }
 
-        int remainingSeconds = (totalMs - elapsedMs + 999) / 1000;
+        int remainingSeconds = (int)((totalMs - elapsedMs + 999) / 1000);
 
         fillRect(surface, 0, 0, 1280, 720, 0x00060d07);
 
@@ -371,7 +436,7 @@ static bool ps4ShowBootCountdown(const std::string& activeTitle, SDL_GameControl
         // Progress bar
         int barW = 1160;
         fillRect(surface, 60, 350, barW, 16, 0x000d2010);
-        int filledW = barW * (totalMs - elapsedMs) / totalMs;
+        int filledW = barW * (int)(totalMs - elapsedMs) / (int)totalMs;
         if (filledW > 0) {
             fillRect(surface, 60, 350, filledW, 16, 0x0018ff62);
         }
@@ -389,8 +454,7 @@ static bool ps4ShowBootCountdown(const std::string& activeTitle, SDL_GameControl
         applyScanlines(surface);
         ps4VideoPresent(surface);
 
-        SDL_Delay(20);
-        elapsedMs += 20;
+        SDL_Delay(16);
     }
 
     SDL_FreeSurface(surface);
@@ -422,10 +486,20 @@ static std::string ps4RunBootMenu(const std::vector<Ps4GameEntry>& entries, int 
 
     bool prevUp = false;
     bool prevDown = false;
-    bool prevConfirm = false;
-    bool prevCancel = false;
+    bool prevConfirm = true; // initialize true to avoid auto-triggering on enter
+    bool prevCancel = true;
+    {
+        bool u, d, c, ca, m;
+        ps4ReadInputState(controller, padHandle, &u, &d, &c, &ca, &m);
+        prevUp = u;
+        prevDown = d;
+        prevConfirm = c;
+        prevCancel = ca;
+    }
     uint32_t repeatTimer = 0;
     bool running = true;
+    const int maxVisible = 8;
+    int scrollOffset = 0;
 
     while (running) {
         bool upRaw = false, downRaw = false, confirmRaw = false, cancelRaw = false, menuRaw = false;
@@ -456,6 +530,13 @@ static std::string ps4RunBootMenu(const std::vector<Ps4GameEntry>& entries, int 
             ps4Log("[ps4] boot menu: selected -> %d (%s)\n", selectedIndex, entries[selectedIndex].title.c_str());
         }
 
+        // Adjust scroll offset to keep selectedIndex in visible window
+        if (selectedIndex < scrollOffset) {
+            scrollOffset = selectedIndex;
+        } else if (selectedIndex >= scrollOffset + maxVisible) {
+            scrollOffset = selectedIndex - maxVisible + 1;
+        }
+
         if (confirmRaw && !prevConfirm) {
             ps4Log("[ps4] boot menu confirmed: '%s' (%s)\n", entries[selectedIndex].title.c_str(), entries[selectedIndex].path.c_str());
             saveActiveGameConfig(entries[selectedIndex].path);
@@ -479,26 +560,40 @@ static std::string ps4RunBootMenu(const std::vector<Ps4GameEntry>& entries, int 
         drawString(surface, 56, 44, "ROBCO INDUSTRIES (TM) TERMLINK PROTOCOL - BOOT SELECTOR", 0x0018ff62, 0, 2);
         drawString(surface, 56, 72, "FALLOUT 2 COMMUNITY EDITION - PLAYSTATION 4 PORT", 0x000d8c36, 0, 1);
 
-        // Subtitle
-        drawString(surface, 56, 120, "DETECTED GAME INSTALLATIONS IN /data/:", 0x0033ff77, 0, 2);
+        // Subtitle with count and scroll status
+        char subTitle[128];
+        if ((int)entries.size() > maxVisible) {
+            snprintf(subTitle, sizeof(subTitle), "DETECTED GAMES (%zu total, showing %d-%d):",
+                     entries.size(), scrollOffset + 1, std::min((int)entries.size(), scrollOffset + maxVisible));
+        } else {
+            snprintf(subTitle, sizeof(subTitle), "DETECTED GAME INSTALLATIONS IN /data/:");
+        }
+        drawString(surface, 56, 120, subTitle, 0x0033ff77, 0, 2);
 
-        // Game list
+        if (scrollOffset > 0) {
+            drawString(surface, 1080, 120, "[^ MORE ABOVE]", 0x000d8c36, 0, 1);
+        }
+        if (scrollOffset + maxVisible < (int)entries.size()) {
+            drawString(surface, 1080, 560, "[v MORE BELOW]", 0x000d8c36, 0, 1);
+        }
+
+        // Game list (windowed scroll)
         int startY = 160;
         int itemH = 46;
-        for (size_t i = 0; i < entries.size(); ++i) {
-            int itemY = startY + (int)i * itemH;
-            if (itemY + itemH > 560) break;
+        for (int v = 0; v < maxVisible && (scrollOffset + v) < (int)entries.size(); ++v) {
+            int i = scrollOffset + v;
+            int itemY = startY + v * itemH;
 
-            bool isSelected = ((int)i == selectedIndex);
+            bool isSelected = (i == selectedIndex);
             if (isSelected) {
                 fillRect(surface, 56, itemY, 1168, 38, 0x0018ff62);
                 char buf[256];
-                snprintf(buf, sizeof(buf), "> [%zu] %s", i + 1, entries[i].title.c_str());
+                snprintf(buf, sizeof(buf), "> [%d] %s", i + 1, entries[i].title.c_str());
                 drawString(surface, 68, itemY + 11, buf, 0x00060d07, 0x0018ff62, 2);
                 drawString(surface, 800, itemY + 15, entries[i].path.c_str(), 0x00060d07, 0x0018ff62, 1);
             } else {
                 char buf[256];
-                snprintf(buf, sizeof(buf), "  [%zu] %s", i + 1, entries[i].title.c_str());
+                snprintf(buf, sizeof(buf), "  [%d] %s", i + 1, entries[i].title.c_str());
                 drawString(surface, 68, itemY + 11, buf, 0x0018ff62, 0, 2);
                 drawString(surface, 800, itemY + 15, entries[i].path.c_str(), 0x000d8c36, 0, 1);
             }

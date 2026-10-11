@@ -349,20 +349,6 @@ static void ps4ApplyButton(int action, bool held, bool* prev)
     *prev = held;
 }
 
-// Reads the native pad button bitmask. Returns false if scePad is unavailable.
-static bool ps4PadButtons(uint32_t* outButtons)
-{
-    if (g_padHandle < 0) {
-        return false;
-    }
-    OrbisPadData data;
-    if (scePadReadState(g_padHandle, &data) != 0) {
-        return false;
-    }
-    *outButtons = data.buttons;
-    return true;
-}
-
 // Drive the player with the left stick. Called once per frame from mainLoop().
 // Continuous march: light stick = walk, hard = run; camera follows the player;
 // direction snaps to the nearest of the 6 hex rotations. No-op outside world mode.
@@ -478,6 +464,25 @@ void ps4GamepadWorldMove()
     reg_anim_end();
 }
 
+static void applyRadialStick(int16_t rawX, int16_t rawY, float* outX, float* outY)
+{
+    const float AXIS_MAX = 32768.0f;
+    float x = (float)rawX / AXIS_MAX;
+    float y = (float)rawY / AXIS_MAX;
+    float mag = sqrtf(x * x + y * y);
+    float dz = g_ps4Controls.stickDeadzone;
+    if (mag <= dz) {
+        *outX = 0.0f;
+        *outY = 0.0f;
+        return;
+    }
+    float normMag = (mag - dz) / (1.0f - dz);
+    if (normMag > 1.0f) normMag = 1.0f;
+    float curveMag = powf(normMag, g_ps4Controls.stickCurve);
+    *outX = (x / mag) * curveMag;
+    *outY = (y / mag) * curveMag;
+}
+
 bool ps4GamepadIsOpen()
 {
     return g_gamepad != nullptr;
@@ -485,38 +490,49 @@ bool ps4GamepadIsOpen()
 
 void ps4GamepadPoll(int* wheelX, int* wheelY)
 {
-    // Gamepad to mouse emulation (Vita-style controls)
-    if (g_gamepad != nullptr) {
-        uint32_t currentTicks = SDL_GetTicks();
-        if (g_lastTicks == 0) {
-            g_lastTicks = currentTicks;
+    // Controller hotplug detection and reconnection:
+    if (g_gamepad != nullptr && !SDL_GameControllerGetAttached(g_gamepad)) {
+        ps4Log("[ps4] gamepad disconnected\n");
+        ps4GamepadClose();
+    }
+    if (g_gamepad == nullptr) {
+        static uint32_t s_lastReconnectCheck = 0;
+        uint32_t now = SDL_GetTicks();
+        if (now - s_lastReconnectCheck >= 500) {
+            s_lastReconnectCheck = now;
+            ps4GamepadOpen();
         }
-        float dt = (float)(currentTicks - g_lastTicks) / 1000.0f;
-        if (dt > 0.1f) dt = 0.1f; // cap to 100ms to avoid jumps after pauses
+        if (g_gamepad == nullptr) {
+            return;
+        }
+    }
+
+    uint32_t currentTicks = SDL_GetTicks();
+    if (g_lastTicks == 0) {
         g_lastTicks = currentTicks;
+    }
+    float dt = (float)(currentTicks - g_lastTicks) / 1000.0f;
+    if (dt > 0.1f) dt = 0.1f; // cap to 100ms to avoid jumps after pauses
+    g_lastTicks = currentTicks;
 
-        const int DEADZONE = 8000;
-        const float AXIS_MAX = 32768.0f;
+    bool worldWalk = ps4InWorldWalkMode();
 
-        // Helper: apply deadzone and normalize axis to [-1, 1]
-        auto normalizeAxis = [&](int16_t raw) -> float {
-            if (abs(raw) < DEADZONE) return 0.0f;
-            return (float)(raw + (raw > 0 ? -DEADZONE : DEADZONE)) / (AXIS_MAX - DEADZONE);
-        };
+    // Read the native pad once per frame up front (atomic buttons + touchpad state).
+    if (g_padHandle < 0) {
+        int32_t userId = -1;
+        if (sceUserServiceGetInitialUser(&userId) == 0 && userId != -1) {
+            g_padHandle = scePadGetHandle(userId, ORBIS_PAD_PORT_TYPE_STANDARD, 0);
+        }
+    }
+    OrbisPadData padData;
+    memset(&padData, 0, sizeof(padData));
+    bool havePadData = (g_padHandle >= 0 && scePadReadState(g_padHandle, &padData) == 0);
+    uint32_t padButtons = havePadData ? padData.buttons : 0;
 
-        bool worldWalk = ps4InWorldWalkMode();
-
-        // Read the native pad once up front. SDL's PS4 backend does not surface
-        // the L2/R2 analog triggers (its GameController axes stay 0), so the
-        // digital L2/R2 bits from scePad are the only reliable source. The same
-        // buttons drive the remapping block below.
-        uint32_t padButtons = 0;
-        bool havePadButtons = ps4PadButtons(&padButtons);
-
-        // "Combat aim" engages while L2 is held during the player's combat turn.
-        bool l2Held = havePadButtons && (padButtons & ORBIS_PAD_BUTTON_L2) != 0;
-        bool r2Held = havePadButtons && (padButtons & ORBIS_PAD_BUTTON_R2) != 0;
-        bool l1Held = SDL_GameControllerGetButton(g_gamepad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER) != 0;
+    // "Combat aim" engages while L2 is held during the player's combat turn.
+    bool l2Held = havePadData && (padButtons & ORBIS_PAD_BUTTON_L2) != 0;
+    bool r2Held = havePadData && (padButtons & ORBIS_PAD_BUTTON_R2) != 0;
+    bool l1Held = SDL_GameControllerGetButton(g_gamepad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER) != 0;
 
         // While the called-shot (VATS) body-part window is up, hand full control
         // back to the modal: aim assist must NOT hijack the cursor or the Cross
@@ -626,7 +642,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         // Options is read via native scePad (its OPTIONS bit is distinct from the
         // touchpad CLICK, which the SDL-PS4 backend otherwise reports as START).
         {
-            bool held = havePadButtons
+            bool held = havePadData
                 ? (padButtons & ORBIS_PAD_BUTTON_OPTIONS) != 0
                 : SDL_GameControllerGetButton(g_gamepad, SDL_CONTROLLER_BUTTON_START) != 0;
             bool prev = g_prevButtons[SDL_CONTROLLER_BUTTON_START];
@@ -640,7 +656,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         // click, so normal pointing never triggers this.
         {
             static bool s_prevTouchpadClick = false;
-            bool held = havePadButtons && (padButtons & ORBIS_PAD_BUTTON_TOUCH_PAD) != 0;
+            bool held = havePadData && (padButtons & ORBIS_PAD_BUTTON_TOUCH_PAD) != 0;
             ps4ApplyButton(g_ps4Controls.actShare, held, &s_prevTouchpadClick);
         }
 
@@ -760,23 +776,34 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
                 s_aimEngaged = (s_aimCount > 0);
             } else {
                 // Prune the frozen set to targets still valid (alive, in range, in
-                // LOS) WITHOUT adding new ones. Validate by address against the live
-                // whole-map list so panning doesn't drop off-screen frozen targets
-                // and a stale pointer is never dereferenced.
-                Object* live[64];
-                int nLive = buildAimList(live, 64, true);
-                int w = 0;
-                for (int i = 0; i < s_aimCount; i++) {
-                    for (int j = 0; j < nLive; j++) {
-                        if (live[j] == s_aimList[i]) {
-                            s_aimList[w++] = s_aimList[i];
-                            break;
+                // LOS) periodically (~120ms) or when current selection becomes invalid,
+                // without re-allocating object lists every frame.
+                static uint32_t s_lastPruneTicks = 0;
+                bool selectedInvalid = (s_aimSelected == nullptr);
+                if (selectedInvalid || (currentTicks - s_lastPruneTicks >= 120)) {
+                    s_lastPruneTicks = currentTicks;
+                    Object* live[64];
+                    int nLive = buildAimList(live, 64, true);
+                    int w = 0;
+                    bool selectedFound = false;
+                    for (int i = 0; i < s_aimCount; i++) {
+                        for (int j = 0; j < nLive; j++) {
+                            if (live[j] == s_aimList[i]) {
+                                s_aimList[w++] = s_aimList[i];
+                                if (s_aimList[i] == s_aimSelected) {
+                                    selectedFound = true;
+                                }
+                                break;
+                            }
                         }
                     }
-                }
-                s_aimCount = w;
-                if (s_aimCount == 0) {
-                    s_aimEngaged = false;
+                    s_aimCount = w;
+                    if (!selectedFound) {
+                        s_aimSelected = (s_aimCount > 0) ? s_aimList[0] : nullptr;
+                    }
+                    if (s_aimCount == 0) {
+                        s_aimEngaged = false;
+                    }
                 }
             }
 
@@ -935,10 +962,14 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         // RIGHT = free cursor. Combat keeps left = cursor / right = camera pan;
         // menus keep left = cursor / right = mouse-wheel. WALK is handled in
         // ps4GamepadWorldMove(); aim assist (L2) owns the cursor and idles both.
-        float lx = normalizeAxis(SDL_GameControllerGetAxis(g_gamepad, SDL_CONTROLLER_AXIS_LEFTX));
-        float ly = normalizeAxis(SDL_GameControllerGetAxis(g_gamepad, SDL_CONTROLLER_AXIS_LEFTY));
-        float rx = normalizeAxis(SDL_GameControllerGetAxis(g_gamepad, SDL_CONTROLLER_AXIS_RIGHTX));
-        float ry = normalizeAxis(SDL_GameControllerGetAxis(g_gamepad, SDL_CONTROLLER_AXIS_RIGHTY));
+        float lx = 0.0f, ly = 0.0f;
+        applyRadialStick(SDL_GameControllerGetAxis(g_gamepad, SDL_CONTROLLER_AXIS_LEFTX),
+                         SDL_GameControllerGetAxis(g_gamepad, SDL_CONTROLLER_AXIS_LEFTY),
+                         &lx, &ly);
+        float rx = 0.0f, ry = 0.0f;
+        applyRadialStick(SDL_GameControllerGetAxis(g_gamepad, SDL_CONTROLLER_AXIS_RIGHTX),
+                         SDL_GameControllerGetAxis(g_gamepad, SDL_CONTROLLER_AXIS_RIGHTY),
+                         &rx, &ry);
 
         auto warpVirtualCursor = [&]() {
             ps4ClampVirtualCursor();
@@ -967,7 +998,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         // at the map edge (can't scroll) free the cursor toward the border.
         auto stickCenteredCamera = [&](float ax, float ay) {
             float mag = sqrtf(ax * ax + ay * ay);
-            if (mag < 0.30f) return;
+            if (mag == 0.0f) return;
             float pt = g_ps4Controls.cameraPanThreshold;
             int sdx = (ax > pt) ? 1 : (ax < -pt ? -1 : 0);
             int sdy = (ay > pt) ? 1 : (ay < -pt ? -1 : 0);
@@ -1045,11 +1076,10 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
             static float s_smoothDx = 0.0f, s_smoothDy = 0.0f;
 
             bool fingerDown = false;
-            OrbisPadData pd;
-            if (g_padHandle >= 0 && scePadReadState(g_padHandle, &pd) == 0 && pd.touch.fingers > 0) {
+            if (havePadData && padData.touch.fingers > 0) {
                 fingerDown = true;
-                uint16_t fx = pd.touch.touch[0].x;
-                uint16_t fy = pd.touch.touch[0].y;
+                uint16_t fx = padData.touch.touch[0].x;
+                uint16_t fy = padData.touch.touch[0].y;
                 if (s_prevFinger) {
                     // Relative trackpad move. DS4 touchpad is ~1920x943 units.
                     // All gains are user-tunable via /data/fallout2/ps4_controls.cfg.
@@ -1100,9 +1130,8 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
                 }
             }
 
-            s_prevFinger = fingerDown;
-            g_touchpadFingerActive = fingerDown;
-        }
+        s_prevFinger = fingerDown;
+        g_touchpadFingerActive = fingerDown;
     }
 }
 
@@ -1145,6 +1174,14 @@ void ps4GamepadOpen()
             g_padHandle = scePadGetHandle(userId, ORBIS_PAD_PORT_TYPE_STANDARD, 0);
         }
         ps4Log("[ps4] scePadGetHandle(user=%d) -> %d\n", userId, g_padHandle);
+
+        // Center virtual cursor on display initially
+        int sw = screenGetWidth();
+        int sh = screenGetHeight();
+        if (sw > 0 && sh > 0) {
+            g_virtualMouseX = (float)(sw / 2);
+            g_virtualMouseY = (float)(sh / 2);
+        }
     }
 }
 
