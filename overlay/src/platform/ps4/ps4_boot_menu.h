@@ -26,6 +26,9 @@ std::vector<Ps4GameEntry> ps4ScanGameFolders();
 // - If 0 valid folders exist: displays a missing-data error screen.
 std::string ps4SelectGameFolder();
 
+// Displays critical error screen when sandbox escape / GoldHEN fails.
+void ps4ShowJailbreakError();
+
 } // namespace fallout
 
 #endif // __PS4__

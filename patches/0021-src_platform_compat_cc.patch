@@ -1,5 +1,5 @@
 diff --git a/src/platform_compat.cc b/src/platform_compat.cc
-index a9a6c10d..a7707368 100644
+index a9a6c10d..ac353e91 100644
 --- a/src/platform_compat.cc
 +++ b/src/platform_compat.cc
 @@ -13,10 +13,15 @@
@@ -18,7 +18,7 @@ index a9a6c10d..a7707368 100644
  #ifdef _WIN32
  #include <windows.h>
  #ifdef _WIN64
-@@ -100,8 +105,21 @@ static void compatDirectoryEntryCacheClear()
+@@ -100,12 +105,51 @@ static void compatDirectoryEntryCacheClear()
  
  static void compat_prepare_native_path(char* nativePath, const char* path)
  {
@@ -40,7 +40,52 @@ index a9a6c10d..a7707368 100644
      compat_windows_path_to_native(nativePath);
      compat_resolve_path(nativePath);
  }
-@@ -314,13 +332,19 @@ int compat_mkdir_recursive(const char* path)
+ 
++#ifdef __PS4__
++// Security boundary for the prison0 escaped filesystem access.
++// Only allows writes/modifications within the active game directory ps4GetDataPath()
++// (including USB mounts /mnt/usb0, /mnt/usb1) and the boot config /data/f2_active_game.txt.
++static bool ps4IsPathWritable(const char* nativePath)
++{
++    if (nativePath == nullptr || nativePath[0] == '\0') {
++        return false;
++    }
++
++    const char* dataPath = ps4GetDataPath();
++    if (dataPath != nullptr && dataPath[0] != '\0') {
++        size_t dataLen = strlen(dataPath);
++        if (strncmp(nativePath, dataPath, dataLen) == 0 && (nativePath[dataLen] == '/' || nativePath[dataLen] == '\0')) {
++            return true;
++        }
++    }
++
++    if (strcmp(nativePath, "/data/f2_active_game.txt") == 0) {
++        return true;
++    }
++
++    return false;
++}
++#endif
++
+ int compat_stricmp(const char* string1, const char* string2)
+ {
+     return SDL_strcasecmp(string1, string2);
+@@ -288,6 +332,14 @@ int compat_mkdir(const char* path)
+     char nativePath[COMPAT_MAX_PATH];
+     compat_prepare_native_path(nativePath, path);
+ 
++#ifdef __PS4__
++    if (!ps4IsPathWritable(nativePath)) {
++        ps4Log("[ps4] Security: blocked mkdir in unapproved path: %s\n", nativePath);
++        errno = EPERM;
++        return -1;
++    }
++#endif
++
+ #ifdef _WIN32
+     int rc = mkdir(nativePath);
+ #else
+@@ -314,13 +366,19 @@ int compat_mkdir_recursive(const char* path)
          if (*sep == '\\' || *sep == '/') {
              char saved = *sep;
              *sep = '\0';
@@ -63,7 +108,7 @@ index a9a6c10d..a7707368 100644
  }
  
  bool compat_is_dir(const char* path)
-@@ -368,12 +392,92 @@ unsigned int compat_timeGetTime()
+@@ -368,12 +426,92 @@ unsigned int compat_timeGetTime()
  #ifdef _WIN32
      return timeGetTime();
  #else
@@ -159,9 +204,19 @@ index a9a6c10d..a7707368 100644
  FILE* compat_fopen(const char* path, const char* mode)
  {
      bool mayWrite = compatFileModeMayWrite(mode);
-@@ -384,6 +488,15 @@ FILE* compat_fopen(const char* path, const char* mode)
+@@ -383,7 +521,25 @@ FILE* compat_fopen(const char* path, const char* mode)
+ 
      char nativePath[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativePath, path);
++
++#ifdef __PS4__
++    if (mayWrite && !ps4IsPathWritable(nativePath)) {
++        ps4Log("[ps4] Security: blocked write fopen on unapproved path: %s\n", nativePath);
++        errno = EPERM;
++        return nullptr;
++    }
++#endif
++
      FILE* stream = fopen(nativePath, mode);
 +#ifdef __PS4__
 +    // Case-insensitive retry on a read miss (see ps4ResolveCaseInsensitive).
@@ -175,3 +230,50 @@ index a9a6c10d..a7707368 100644
      if (mayWrite && stream != nullptr) {
          compatDirectoryEntryCacheClear();
      }
+@@ -399,6 +555,15 @@ gzFile compat_gzopen(const char* path, const char* mode)
+ 
+     char nativePath[COMPAT_MAX_PATH];
+     compat_prepare_native_path(nativePath, path);
++
++#ifdef __PS4__
++    if (mayWrite && !ps4IsPathWritable(nativePath)) {
++        ps4Log("[ps4] Security: blocked write gzopen on unapproved path: %s\n", nativePath);
++        errno = EPERM;
++        return nullptr;
++    }
++#endif
++
+     gzFile stream = gzopen(nativePath, mode);
+     if (mayWrite && stream != nullptr) {
+         compatDirectoryEntryCacheClear();
+@@ -442,6 +607,15 @@ int compat_remove(const char* path)
+ 
+     char nativePath[COMPAT_MAX_PATH];
+     compat_prepare_native_path(nativePath, path);
++
++#ifdef __PS4__
++    if (!ps4IsPathWritable(nativePath)) {
++        ps4Log("[ps4] Security: blocked remove on unapproved path: %s\n", nativePath);
++        errno = EPERM;
++        return -1;
++    }
++#endif
++
+     int rc = remove(nativePath);
+     if (rc == 0) {
+         compatDirectoryEntryCacheClear();
+@@ -459,6 +633,14 @@ int compat_rename(const char* oldFileName, const char* newFileName)
+     char nativeNewFileName[COMPAT_MAX_PATH];
+     compat_prepare_native_path(nativeNewFileName, newFileName);
+ 
++#ifdef __PS4__
++    if (!ps4IsPathWritable(nativeOldFileName) || !ps4IsPathWritable(nativeNewFileName)) {
++        ps4Log("[ps4] Security: blocked rename on unapproved path: %s -> %s\n", nativeOldFileName, nativeNewFileName);
++        errno = EPERM;
++        return -1;
++    }
++#endif
++
+     int rc = rename(nativeOldFileName, nativeNewFileName);
+     if (rc == 0) {
+         compatDirectoryEntryCacheClear();

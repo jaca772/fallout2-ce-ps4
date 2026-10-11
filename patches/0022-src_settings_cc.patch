@@ -1,0 +1,30 @@
+diff --git a/src/settings.cc b/src/settings.cc
+index 2fc76f70..ed87a36d 100644
+--- a/src/settings.cc
++++ b/src/settings.cc
+@@ -150,7 +150,11 @@ void initSettingsRegistry(bool isMapper)
+     SETTING(language);
+     SETTING(scroll_lock);
+     SETTING(interrupt_walk);
++#ifdef __PS4__
++    SETTING_P(art_cache_size, clamp(32, 64));
++#else
+     SETTING_P(art_cache_size, clamp(32, 512));
++#endif
+     SETTING(color_cycling);
+     SETTING(cycle_speed_factor);
+     SETTING(hashing);
+@@ -307,6 +311,13 @@ bool settingsInit(bool isMapper, int argc, char** argv)
+         descriptor.read();
+     }
+ 
++#ifdef __PS4__
++    // Clamp art cache size to 64 MiB on PS4 to avoid OOM panics in heavy mods.
++    if (settings.system.art_cache_size > 64) {
++        settings.system.art_cache_size = 64;
++    }
++#endif
++
+     return true;
+ }
+ 

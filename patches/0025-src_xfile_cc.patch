@@ -1,0 +1,95 @@
+diff --git a/src/xfile.cc b/src/xfile.cc
+index 1e6c7124..7d5b03a0 100644
+--- a/src/xfile.cc
++++ b/src/xfile.cc
+@@ -14,6 +14,10 @@
+ #include "debug.h"
+ #include "file_find.h"
+ 
++#ifdef __PS4__
++#include "platform/ps4/ps4.h"
++#endif
++
+ namespace fallout {
+ 
+ typedef enum XFileEnumerationEntryType {
+@@ -59,7 +63,15 @@ int xfileClose(XFile* stream)
+         rc = gzclose(stream->gzfile);
+         break;
+     default:
+-        rc = fclose(stream->file);
++        if (stream->file != nullptr) {
++            fflush(stream->file);
++#ifdef __PS4__
++            fsync(fileno(stream->file));
++#endif
++            rc = fclose(stream->file);
++        } else {
++            rc = 0;
++        }
+         break;
+     }
+ 
+@@ -754,11 +766,6 @@ void xlistFree(XList* xlist)
+ // 0x4DFFAC xmkdir
+ static int xbaseMakeDirectory(const char* filePath)
+ {
+-    char workingDirectory[COMPAT_MAX_PATH];
+-    if (getcwd(workingDirectory, COMPAT_MAX_PATH) == nullptr) {
+-        return -1;
+-    }
+-
+     char drive[COMPAT_MAX_DRIVE];
+     char dir[COMPAT_MAX_DIR];
+     compat_splitpath(filePath, drive, dir, nullptr, nullptr);
+@@ -781,41 +788,20 @@ static int xbaseMakeDirectory(const char* filePath)
+         if (curr == nullptr) {
+             // Either there are no directory-based xbase, or there are no open
+             // xbases at all - resolve path against current working directory.
+-            snprintf(path, sizeof(path), "%s\\%s", workingDirectory, filePath);
+-        }
+-    }
+-
+-    char* pch = path;
+-
+-    if (*pch == '\\' || *pch == '/') {
+-        pch++;
+-    }
+-
+-    while (*pch != '\0') {
+-        if (*pch == '\\' || *pch == '/') {
+-            char temp = *pch;
+-            *pch = '\0';
+-
+-            if (chdir(path) != 0) {
+-                if (compat_mkdir(path) != 0) {
+-                    chdir(workingDirectory);
+-                    return -1;
+-                }
++#ifdef __PS4__
++            snprintf(path, sizeof(path), "%s\\%s", ps4GetDataPath(), filePath);
++#else
++            char workingDirectory[COMPAT_MAX_PATH];
++            if (getcwd(workingDirectory, COMPAT_MAX_PATH) != nullptr) {
++                snprintf(path, sizeof(path), "%s\\%s", workingDirectory, filePath);
+             } else {
+-                chdir(workingDirectory);
++                strcpy(path, filePath);
+             }
+-
+-            *pch = temp;
++#endif
+         }
+-        pch++;
+     }
+ 
+-    // Last path component.
+-    compat_mkdir(path);
+-
+-    chdir(workingDirectory);
+-
+-    return 0;
++    return compat_mkdir_recursive(path);
+ }
+ 
+ // Closes all xbases.

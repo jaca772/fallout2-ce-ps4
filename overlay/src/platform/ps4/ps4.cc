@@ -55,6 +55,7 @@ static bool g_ps4OrigCredValid = false;
 extern "C" [[noreturn]] void __wrap_exit(int status)
 {
     ps4EarlyLog("[ps4] exit(%d) -> preparing clean exit\n", status);
+    fflush(nullptr);
     chdir("/");
     sync();
     fallout::ps4VideoShutdown();
@@ -707,6 +708,11 @@ bool ps4MountData()
     jbc_jailbreak_cred(&cred);
     int cr = jbc_set_cred(&cred);
     ps4Log("[ps4] jbc jailbreak cred -> %d\n", cr);
+    if (cr != 0) {
+        ps4Log("[ps4] ERROR: jbc_set_cred failed (%d) - GoldHEN / jailbreak not active?\n", cr);
+        ps4ShowJailbreakError();
+        return false;
+    }
 
     std::string chosenPath = ps4SelectGameFolder();
     if (chosenPath.empty()) {

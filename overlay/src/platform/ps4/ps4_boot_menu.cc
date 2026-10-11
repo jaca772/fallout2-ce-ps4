@@ -526,6 +526,39 @@ static std::string ps4RunBootMenu(const std::vector<Ps4GameEntry>& entries, int 
 
 } // namespace
 
+void ps4ShowJailbreakError()
+{
+    ps4Log("[ps4] showing jailbreak error screen\n");
+    if (!ps4VideoInit(1280, 720)) {
+        return;
+    }
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, 1280, 720, 32, SDL_PIXELFORMAT_RGB888);
+    if (surface == nullptr) {
+        ps4VideoShutdown();
+        return;
+    }
+
+    fillRect(surface, 0, 0, 1280, 720, 0x00060d07);
+    fillRect(surface, 40, 40, 1200, 70, 0x00142818);
+    drawString(surface, 60, 60, "ROBCO INDUSTRIES (TM) TERMLINK PROTOCOL - ERROR 0x01", 0x00ff4444, 0, 2);
+
+    drawString(surface, 60, 150, "CRITICAL ERROR: JAILBREAK FAILED", 0x00ff4444, 0, 3);
+    drawString(surface, 60, 220, "Could not escape application sandbox (libjbc set_cred failed).", 0x0018ff62, 0, 2);
+
+    drawString(surface, 60, 290, "POSSIBLE CAUSES:", 0x0033ff77, 0, 2);
+    drawString(surface, 80, 330, "1. GoldHEN is not active or kernel rw failed.", 0x0018ff62, 0, 2);
+    drawString(surface, 80, 370, "2. Firmware version is unsupported.", 0x0018ff62, 0, 2);
+    drawString(surface, 80, 430, "Please verify GoldHEN status in system settings and restart.", 0x0018ff62, 0, 2);
+    drawString(surface, 80, 500, "Press [PS Button] to return to the home screen.", 0x0018ff62, 0, 2);
+
+    applyScanlines(surface);
+    ps4VideoPresent(surface);
+
+    while (true) {
+        SDL_Delay(100);
+    }
+}
+
 std::vector<Ps4GameEntry> ps4ScanGameFolders()
 {
     std::vector<Ps4GameEntry> results;
