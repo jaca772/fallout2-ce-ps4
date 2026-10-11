@@ -114,10 +114,10 @@ extern Ps4ControlsConfig g_ps4Controls;
 // default template if the file doesn't exist yet). Must run after ps4MountData().
 void ps4ReadControlsConfig();
 
-// Mounts the console's /data into the sandbox (via libjbc) and chdir's to
-// PS4_DATA_PATH. Must run AFTER SDL_Init but before the engine reads game data:
-// libjbc briefly manipulates kernel credentials, which corrupts SDL's VideoOut/
-// mbus handshake if done before SDL_Init (observed: SIGSYS in PS4_VideoInit).
+// Escapes the sandbox via libjbc credential jailbreak (prison0) and chdir's to
+// the selected game folder. Must run AFTER SDL_Init but before the engine reads
+// game data: libjbc manipulates kernel credentials, which corrupts SDL's service
+// handshake if done before SDL_Init (observed: SIGSYS).
 // Returns true on success; on failure the engine's data checks report it.
 bool ps4MountData();
 

@@ -6,7 +6,7 @@
 #   - create-fself --paid 0x3800000000000011 (no authinfo)
 #   - param.sfo CATEGORY "gd" (full game application, APP_TYPE 1)
 #
-# IMPORTANT (see CLAUDE.md): the pkg bundles ONLY the engine + sce_sys +
+# IMPORTANT (see AGENTS.md): the pkg bundles ONLY the engine + sce_sys +
 # sce_module assets. No game data (.dat/data/sound) is ever packaged.
 
 set(PS4_TITLE       "Fallout II Community Edition")

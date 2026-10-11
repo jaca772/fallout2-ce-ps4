@@ -18,9 +18,6 @@ struct Ps4GameEntry {
 // Scans console data directories for game folders containing master.dat.
 std::vector<Ps4GameEntry> ps4ScanGameFolders();
 
-// Checks whether L1 or L2 is currently pressed on the controller.
-bool ps4IsL1OrL2Pressed();
-
 // Main entry point for boot folder selection:
 // - If only 1 valid game folder exists: returns it immediately (skipping menu).
 // - If multiple folders exist:

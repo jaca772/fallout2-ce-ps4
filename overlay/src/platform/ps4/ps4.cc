@@ -699,24 +699,6 @@ void ps4ReadControlsConfig()
 //
 // This MUST run AFTER SDL_Init. Doing the cred swap earlier corrupts SDL's
 // service handshake (observed: SIGSYS). By here SDL_Init has completed.
-// Logs up to 16 entries of a directory to klog (post-jailbreak diagnostics).
-static void ps4ListDir(const char* dir)
-{
-    DIR* d = opendir(dir);
-    if (d == nullptr) {
-        ps4Log("[ps4] opendir(%s) failed errno=%d\n", dir, errno);
-        return;
-    }
-    ps4Log("[ps4] listing %s:\n", dir);
-    struct dirent* e;
-    int n = 0;
-    while ((e = readdir(d)) != nullptr && n < 16) {
-        ps4Log("[ps4]   %s\n", e->d_name);
-        n++;
-    }
-    closedir(d);
-}
-
 bool ps4MountData()
 {
     jbc_get_cred(&g_ps4OrigCred);

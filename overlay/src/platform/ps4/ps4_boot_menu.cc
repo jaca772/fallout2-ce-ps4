@@ -608,42 +608,6 @@ std::vector<Ps4GameEntry> ps4ScanGameFolders()
     return results;
 }
 
-bool ps4IsL1OrL2Pressed()
-{
-    SDL_PumpEvents();
-
-    int joysticks = SDL_NumJoysticks();
-    for (int i = 0; i < joysticks; ++i) {
-        if (SDL_IsGameController(i)) {
-            SDL_GameController* pad = SDL_GameControllerOpen(i);
-            if (pad != nullptr) {
-                bool l1 = SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER) != 0;
-                bool l2 = (SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 8000)
-                       || (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_LEFTSTICK) != 0);
-                SDL_GameControllerClose(pad);
-                if (l1 || l2) return true;
-            }
-        }
-    }
-
-    scePadInit();
-    int32_t userId = -1;
-    if (sceUserServiceGetInitialUser(&userId) == 0 && userId != -1) {
-        int handle = scePadGetHandle(userId, ORBIS_PAD_PORT_TYPE_STANDARD, 0);
-        if (handle >= 0) {
-            OrbisPadData pd;
-            memset(&pd, 0, sizeof(pd));
-            if (scePadReadState(handle, &pd) == 0) {
-                if (pd.buttons & (ORBIS_PAD_BUTTON_L1 | ORBIS_PAD_BUTTON_L2 | ORBIS_PAD_BUTTON_L3)) {
-                    return true;
-                }
-            }
-        }
-    }
-
-    return false;
-}
-
 std::string ps4SelectGameFolder()
 {
     ps4Log("[ps4] scanning console for Fallout game folders...\n");

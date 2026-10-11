@@ -39,6 +39,16 @@ static uint32_t g_lastTicks = 0;
 static bool g_prevButtons[SDL_CONTROLLER_BUTTON_MAX] = { false };
 static uint32_t g_lastDpadTicks = 0;
 
+static void ps4ClampVirtualCursor()
+{
+    int lw = screenGetWidth();
+    int lh = screenGetHeight();
+    if (g_virtualMouseX < 0.0f) g_virtualMouseX = 0.0f;
+    if (g_virtualMouseX > (float)(lw - 1)) g_virtualMouseX = (float)(lw - 1);
+    if (g_virtualMouseY < 0.0f) g_virtualMouseY = 0.0f;
+    if (g_virtualMouseY > (float)(lh - 1)) g_virtualMouseY = (float)(lh - 1);
+}
+
 // Native scePad handle, used ONLY to read the true button bitmask so we can tell
 // the OPTIONS button apart from the touchpad click. The SDL-PS4 backend reports
 // BOTH as SDL_CONTROLLER_BUTTON_START (joystick button 6), so a touchpad click
@@ -452,18 +462,8 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
             if (dpUp || dpDown) {
                 if ((int)(currentTicks - g_lastDpadTicks) > g_ps4Controls.dpadRepeatMs) {
                     const float step = 14.0f; // clears the modal's 10px threshold
-                    int lw = screenGetWidth();
-                    int lh = screenGetHeight();
                     g_virtualMouseY += dpUp ? -step : step;
-                    if (g_virtualMouseY < 0.0f) g_virtualMouseY = 0.0f;
-                    if (g_virtualMouseY > (float)(lh - 1)) g_virtualMouseY = (float)(lh - 1);
-                    if (gSdlWindow != nullptr) {
-                        int winW, winH;
-                        SDL_GetWindowSize(gSdlWindow, &winW, &winH);
-                        SDL_WarpMouseInWindow(gSdlWindow,
-                            (int)(g_virtualMouseX * (float)winW / (float)lw),
-                            (int)(g_virtualMouseY * (float)winH / (float)lh));
-                    }
+                    ps4ClampVirtualCursor();
                     g_lastDpadTicks = currentTicks;
                 }
             } else {
@@ -687,19 +687,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
                 if (tr.right > tr.left || tr.bottom > tr.top) {
                     g_virtualMouseX = (float)((tr.left + tr.right) / 2);
                     g_virtualMouseY = (float)((tr.top + tr.bottom) / 2);
-                    int lw = screenGetWidth();
-                    int lh = screenGetHeight();
-                    if (g_virtualMouseX < 0.0f) g_virtualMouseX = 0.0f;
-                    if (g_virtualMouseX > (float)(lw - 1)) g_virtualMouseX = (float)(lw - 1);
-                    if (g_virtualMouseY < 0.0f) g_virtualMouseY = 0.0f;
-                    if (g_virtualMouseY > (float)(lh - 1)) g_virtualMouseY = (float)(lh - 1);
-                    if (gSdlWindow != nullptr) {
-                        int winW, winH;
-                        SDL_GetWindowSize(gSdlWindow, &winW, &winH);
-                        SDL_WarpMouseInWindow(gSdlWindow,
-                            (int)(g_virtualMouseX * (float)winW / (float)lw),
-                            (int)(g_virtualMouseY * (float)winH / (float)lh));
-                    }
+                    ps4ClampVirtualCursor();
                 }
 
                 // Combat only: Cross = fire; with R2 also held = aimed (called)
@@ -775,19 +763,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         float ry = normalizeAxis(SDL_GameControllerGetAxis(g_gamepad, SDL_CONTROLLER_AXIS_RIGHTY));
 
         auto warpVirtualCursor = [&]() {
-            int lw = screenGetWidth();
-            int lh = screenGetHeight();
-            if (g_virtualMouseX < 0.0f) g_virtualMouseX = 0.0f;
-            if (g_virtualMouseX > (float)(lw - 1)) g_virtualMouseX = (float)(lw - 1);
-            if (g_virtualMouseY < 0.0f) g_virtualMouseY = 0.0f;
-            if (g_virtualMouseY > (float)(lh - 1)) g_virtualMouseY = (float)(lh - 1);
-            if (gSdlWindow != nullptr) {
-                int winW, winH;
-                SDL_GetWindowSize(gSdlWindow, &winW, &winH);
-                SDL_WarpMouseInWindow(gSdlWindow,
-                    (int)(g_virtualMouseX * (float)winW / (float)lw),
-                    (int)(g_virtualMouseY * (float)winH / (float)lh));
-            }
+            ps4ClampVirtualCursor();
         };
 
         // Free MacBook-like pointer from a stick (with the boost button).
@@ -926,21 +902,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
 
                     g_virtualMouseX += s_smoothDx * gain;
                     g_virtualMouseY += s_smoothDy * gain;
-
-                    int logicalW = screenGetWidth();
-                    int logicalH = screenGetHeight();
-                    if (g_virtualMouseX < 0.0f) g_virtualMouseX = 0.0f;
-                    if (g_virtualMouseX > (float)(logicalW - 1)) g_virtualMouseX = (float)(logicalW - 1);
-                    if (g_virtualMouseY < 0.0f) g_virtualMouseY = 0.0f;
-                    if (g_virtualMouseY > (float)(logicalH - 1)) g_virtualMouseY = (float)(logicalH - 1);
-
-                    if (gSdlWindow != nullptr) {
-                        int winW, winH;
-                        SDL_GetWindowSize(gSdlWindow, &winW, &winH);
-                        SDL_WarpMouseInWindow(gSdlWindow,
-                            (int)(g_virtualMouseX * (float)winW / (float)logicalW),
-                            (int)(g_virtualMouseY * (float)winH / (float)logicalH));
-                    }
+                    ps4ClampVirtualCursor();
                 } else {
                     // Finger just landed — start tap tracking, clear smoothing.
                     s_tapStart = currentTicks;
@@ -968,15 +930,15 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
 
 void ps4GamepadFillMouse(MouseData* mouseState)
 {
-        mouseState->x = (int)g_virtualMouseX;
-        mouseState->y = (int)g_virtualMouseY;
-        // LMB = a button mapped to lmb (default Cross) OR a held touchpad-tap
-        // click (counted down over a few polls so the engine sees press->release).
-        mouseState->buttons[0] = g_padLmb || (g_touchpadClickFrames > 0);
-        if (g_touchpadClickFrames > 0) {
-            g_touchpadClickFrames--;
-        }
-        mouseState->buttons[1] = g_padRmb;
+    mouseState->x = (int)g_virtualMouseX;
+    mouseState->y = (int)g_virtualMouseY;
+    // LMB = a button mapped to lmb (default Cross) OR a held touchpad-tap
+    // click (counted down over a few polls so the engine sees press->release).
+    mouseState->buttons[0] = g_padLmb || (g_touchpadClickFrames > 0);
+    if (g_touchpadClickFrames > 0) {
+        g_touchpadClickFrames--;
+    }
+    mouseState->buttons[1] = g_padRmb;
 }
 
 void ps4GamepadOpen()

@@ -1,5 +1,5 @@
 diff --git a/src/movie.cc b/src/movie.cc
-index 278f908e..8e022046 100644
+index 278f908e..fec54224 100644
 --- a/src/movie.cc
 +++ b/src/movie.cc
 @@ -21,6 +21,10 @@
@@ -68,18 +68,7 @@ index 278f908e..8e022046 100644
  }
  
  // 0x5195BC subtitleFont
-@@ -283,7 +305,9 @@ static void movieFreeImpl(void* ptr)
- // 0x48662C movieRead
- static bool movieReadImpl(void* handle, void* buf, int count)
- {
--    return fileRead(buf, 1, count, (File*)handle) == count;
-+    int rc = fileRead(buf, 1, count, (File*)handle);
-+    debugPrint("[ps4] movieReadImpl: count=%d, rc=%d\n", count, rc);
-+    return rc == count;
- }
- 
- // 0x486654 movie_MVE_ShowFrame
-@@ -301,6 +325,9 @@ static void movieDirectImpl(unsigned char* pixels, int src_width, int src_height
+@@ -301,6 +323,9 @@ static void movieDirectImpl(unsigned char* pixels, int src_width, int src_height
  
      if (movieOutputRect.w == src_width && movieOutputRect.h == src_height) {
          movieDirectOverlay.active = false;
@@ -89,7 +78,7 @@ index 278f908e..8e022046 100644
          _scr_blit(pixels, src_width, src_height, 0, 0, src_width, src_height, movieOutputRect.x, movieOutputRect.y);
      } else {
          // we're scaling, so use an SDL overlay to render
-@@ -312,16 +339,27 @@ static void movieDirectImpl(unsigned char* pixels, int src_width, int src_height
+@@ -312,16 +337,27 @@ static void movieDirectImpl(unsigned char* pixels, int src_width, int src_height
          movieDirectOverlayUpload(pixels, src_width, src_height);
          movieDirectOverlay.dstRect = movieOutputRect;
          movieDirectOverlay.active = true;
@@ -117,13 +106,3 @@ index 278f908e..8e022046 100644
  }
  
  void movieHandleRendererReset()
-@@ -765,7 +803,9 @@ int _movieRunRect(int win, char* filePath, int x, int y, int w, int h)
- // 0x487B7C stepMovie
- static int _stepMovie()
- {
-+    debugPrint("[ps4] _stepMovie: entering\n");
-     int stepResult = _MVE_rmStepMovie();
-+    debugPrint("[ps4] _stepMovie: stepResult=%d\n", stepResult);
-     if (stepResult != -1) {
-         movieRenderSubtitles();
-         renderPresent();
