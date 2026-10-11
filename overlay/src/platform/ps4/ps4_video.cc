@@ -345,6 +345,7 @@ static void ps4CompositeMovie(uint32_t* fb)
     int endX = dx0 + dw > (int)g.outW ? (int)g.outW : dx0 + dw;
     if (endX <= startX) return;
 
+    // NOTE: s_movieRow resides in cached RAM to avoid uncached reads from WC framebuffer.
     static uint32_t s_movieRow[1920];
     int prevSrcY = -1;
     for (int y = 0; y < dh; y++) {
@@ -403,6 +404,10 @@ void ps4VideoPresent(SDL_Surface* frame)
                              g.movieDst.w >= g.srcW && g.movieDst.h >= g.srcH;
 
     if (!isFullscreenMovie) {
+        // NOTE: s_rowBuf resides in normal cached RAM. The destination fb is allocated
+        // as WC (Write-Combined) direct GPU memory. Never read from fb (e.g. duplicating
+        // previous lines via memcpy from drow - pitch) as uncached WC reads stall the CPU pipeline
+        // and degrade framerate from 60 FPS down to ~10 FPS.
         static uint32_t s_rowBuf[1920];
         for (uint32_t oy = 0; oy < g.dstH; oy++) {
             uint32_t* drow = fb + (size_t)(g.dstY + oy) * g.pitch + g.dstX;
@@ -419,12 +424,14 @@ void ps4VideoPresent(SDL_Surface* frame)
 
     ps4CompositeMovie(fb);
 
+#ifdef PS4_LOG_FRAME_PACING
     uint64_t t1 = sceKernelGetProcessTime();
     static uint32_t s_frameLogCounter = 0;
     if (++s_frameLogCounter >= 120) {
         s_frameLogCounter = 0;
         ps4Log("[ps4] frame delta: %lu us (upscale: %lu us)\n", (unsigned long)frameDelta, (unsigned long)(t1 - t0));
     }
+#endif
 
     sceVideoOutSubmitFlip(g.video, g.activeIdx, ORBIS_VIDEO_OUT_FLIP_VSYNC, g.frameID);
 

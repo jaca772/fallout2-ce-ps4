@@ -1,5 +1,5 @@
 diff --git a/src/xfile.cc b/src/xfile.cc
-index 1e6c7124..7d5b03a0 100644
+index 1e6c7124..4a18d96c 100644
 --- a/src/xfile.cc
 +++ b/src/xfile.cc
 @@ -14,6 +14,10 @@
@@ -30,19 +30,19 @@ index 1e6c7124..7d5b03a0 100644
          break;
      }
  
-@@ -754,11 +766,6 @@ void xlistFree(XList* xlist)
+@@ -754,9 +766,8 @@ void xlistFree(XList* xlist)
  // 0x4DFFAC xmkdir
  static int xbaseMakeDirectory(const char* filePath)
  {
 -    char workingDirectory[COMPAT_MAX_PATH];
 -    if (getcwd(workingDirectory, COMPAT_MAX_PATH) == nullptr) {
 -        return -1;
--    }
--
++    if (filePath == nullptr || filePath[0] == '\0') {
++        return 0;
+     }
+ 
      char drive[COMPAT_MAX_DRIVE];
-     char dir[COMPAT_MAX_DIR];
-     compat_splitpath(filePath, drive, dir, nullptr, nullptr);
-@@ -781,41 +788,20 @@ static int xbaseMakeDirectory(const char* filePath)
+@@ -781,41 +792,20 @@ static int xbaseMakeDirectory(const char* filePath)
          if (curr == nullptr) {
              // Either there are no directory-based xbase, or there are no open
              // xbases at all - resolve path against current working directory.
