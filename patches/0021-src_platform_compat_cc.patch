@@ -1,5 +1,5 @@
 diff --git a/src/platform_compat.cc b/src/platform_compat.cc
-index a9a6c10d..eecb1ebd 100644
+index a9a6c10d..33236725 100644
 --- a/src/platform_compat.cc
 +++ b/src/platform_compat.cc
 @@ -13,10 +13,15 @@
@@ -79,7 +79,16 @@ index a9a6c10d..eecb1ebd 100644
  int compat_stricmp(const char* string1, const char* string2)
  {
      return SDL_strcasecmp(string1, string2);
-@@ -288,6 +330,14 @@ int compat_mkdir(const char* path)
+@@ -283,11 +325,23 @@ long compat_filelength(int fd)
+ 
+ int compat_mkdir(const char* path)
+ {
++    if (path == nullptr || path[0] == '\0') {
++        return 0;
++    }
++
+     compatDirectoryEntryCacheClear();
+ 
      char nativePath[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativePath, path);
  
@@ -94,7 +103,7 @@ index a9a6c10d..eecb1ebd 100644
  #ifdef _WIN32
      int rc = mkdir(nativePath);
  #else
-@@ -314,13 +364,19 @@ int compat_mkdir_recursive(const char* path)
+@@ -314,13 +368,19 @@ int compat_mkdir_recursive(const char* path)
          if (*sep == '\\' || *sep == '/') {
              char saved = *sep;
              *sep = '\0';
@@ -117,7 +126,7 @@ index a9a6c10d..eecb1ebd 100644
  }
  
  bool compat_is_dir(const char* path)
-@@ -368,12 +424,92 @@ unsigned int compat_timeGetTime()
+@@ -368,12 +428,92 @@ unsigned int compat_timeGetTime()
  #ifdef _WIN32
      return timeGetTime();
  #else
@@ -213,7 +222,7 @@ index a9a6c10d..eecb1ebd 100644
  FILE* compat_fopen(const char* path, const char* mode)
  {
      bool mayWrite = compatFileModeMayWrite(mode);
-@@ -383,7 +519,25 @@ FILE* compat_fopen(const char* path, const char* mode)
+@@ -383,7 +523,25 @@ FILE* compat_fopen(const char* path, const char* mode)
  
      char nativePath[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativePath, path);
@@ -239,7 +248,7 @@ index a9a6c10d..eecb1ebd 100644
      if (mayWrite && stream != nullptr) {
          compatDirectoryEntryCacheClear();
      }
-@@ -399,6 +553,15 @@ gzFile compat_gzopen(const char* path, const char* mode)
+@@ -399,6 +557,15 @@ gzFile compat_gzopen(const char* path, const char* mode)
  
      char nativePath[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativePath, path);
@@ -255,7 +264,7 @@ index a9a6c10d..eecb1ebd 100644
      gzFile stream = gzopen(nativePath, mode);
      if (mayWrite && stream != nullptr) {
          compatDirectoryEntryCacheClear();
-@@ -442,6 +605,15 @@ int compat_remove(const char* path)
+@@ -442,6 +609,15 @@ int compat_remove(const char* path)
  
      char nativePath[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativePath, path);
@@ -271,7 +280,7 @@ index a9a6c10d..eecb1ebd 100644
      int rc = remove(nativePath);
      if (rc == 0) {
          compatDirectoryEntryCacheClear();
-@@ -459,6 +631,14 @@ int compat_rename(const char* oldFileName, const char* newFileName)
+@@ -459,6 +635,14 @@ int compat_rename(const char* oldFileName, const char* newFileName)
      char nativeNewFileName[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativeNewFileName, newFileName);
  

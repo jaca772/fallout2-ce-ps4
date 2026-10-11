@@ -390,6 +390,9 @@ void ps4VideoPresent(SDL_Surface* frame)
     }
 
     uint64_t t0 = sceKernelGetProcessTime();
+    static uint64_t s_lastPresentTime = 0;
+    uint64_t frameDelta = s_lastPresentTime > 0 ? (t0 - s_lastPresentTime) : 0;
+    s_lastPresentTime = t0;
 
     uint32_t* fb = (uint32_t*)g.fb[g.activeIdx];
     const uint32_t* src = (const uint32_t*)frame->pixels;
@@ -420,7 +423,7 @@ void ps4VideoPresent(SDL_Surface* frame)
     static uint32_t s_frameLogCounter = 0;
     if (++s_frameLogCounter >= 120) {
         s_frameLogCounter = 0;
-        ps4Log("[ps4] upscale frame time: %lu us\n", (unsigned long)(t1 - t0));
+        ps4Log("[ps4] frame delta: %lu us (upscale: %lu us)\n", (unsigned long)frameDelta, (unsigned long)(t1 - t0));
     }
 
     sceVideoOutSubmitFlip(g.video, g.activeIdx, ORBIS_VIDEO_OUT_FLIP_VSYNC, g.frameID);
