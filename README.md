@@ -16,11 +16,13 @@ PlayStation 4 homebrew port of [fallout2-ce](https://github.com/fallout2-ce/fall
   </tr>
   <tr>
     <td align="center">
-      <img src="docs/images/auto_aim.gif" alt="Combat aim assist" width="380"><br>
+      <img src="docs/images/auto_aim.gif" alt="Combat aim assist" width="640"><br>
       <sub><b>Combat aim assist</b> — hold <b>L2</b> to snap the reticle onto the nearest enemy (D-pad cycles targets)</sub>
     </td>
+  </tr>
+  <tr>
     <td align="center">
-      <img src="docs/images/auto_loot.gif" alt="Loot assist" width="380"><br>
+      <img src="docs/images/auto_loot.gif" alt="Loot assist" width="640"><br>
       <sub><b>Loot assist</b> — hold <b>L2 + L1</b> to snap onto containers, corpses and doors</sub>
     </td>
   </tr>
