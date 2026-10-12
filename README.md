@@ -5,43 +5,68 @@ PlayStation 4 homebrew port of [fallout2-ce](https://github.com/fallout2-ce/fall
 - **100% Native Presentation:** Renders via native `sceVideoOut` flip queues — **zero proprietary Sony modules needed**.
 - **Engine-only Package:** No copyrighted game assets are bundled. You provide your own Fallout 2 PC data files.
 - **DualShock 4 Gamepad Support:** Smooth analog camera & cursor, trackpad pointer via DS4 Touchpad, combat target snap (L2), called-shot VATS (L2 + R2), and loot/door assist (L2 + L1).
-- **Case-Insensitive Path Matching:** Built-in compatibility layer matches mixed-case Windows filenames on the PS4's case-sensitive filesystem automatically.
+- **Custom boot menu:** Detects every game/mod folder on your console and lets you pick which one to launch — hold **L1** or **L2** while the app starts to open it.
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/images/boot_menu.png" alt="RobCo boot menu with mod selection" width="640"><br>
+      <sub><b>Mod selection boot menu</b> — auto-detects Fallout 2, Sonora, Nevada, RPU… (hold <b>L1</b> or <b>L2</b> at launch)</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/images/auto_aim.gif" alt="Combat aim assist" width="380"><br>
+      <sub><b>Combat aim assist</b> — hold <b>L2</b> to snap the reticle onto the nearest enemy (D-pad cycles targets)</sub>
+    </td>
+    <td align="center">
+      <img src="docs/images/auto_loot.gif" alt="Loot assist" width="380"><br>
+      <sub><b>Loot assist</b> — hold <b>L2 + L1</b> to snap onto containers, corpses and doors</sub>
+    </td>
+  </tr>
+</table>
 
 ---
 
 ## Installation & Setup
 
 ### 1. Requirements
-- A jailbroken PS4 running **GoldHEN** (tested and verified on **firmware 9.00**; other GoldHEN firmwares 5.05–11.00 are expected to work — feedback and reports in GitHub Issues are welcome).
+- A jailbroken PS4 running **GoldHEN** — tested and verified on **firmware 9.00** (other GoldHEN firmwares 5.05–11.00 are expected to work; feedback and reports in GitHub Issues are welcome).
 - Your own copy of Fallout 2 for PC (GOG, Steam, or original CD).
 
 ### 2. Copy Game Data
-Transfer your game files via FTP (e.g. GoldHEN FTP server on port 2121) to **`/data/fallout2/`** on the console:
+Transfer your game files via FTP (e.g. GoldHEN FTP server on port 2121) to **`/data/fallout2/`** on the console, or copy a game folder directly onto a pendrive / external SSD/HDD.
 
-```
-/data/fallout2/
-├── master.dat        # Required (from your Fallout 2 PC install)
-├── critter.dat       # Required (from your Fallout 2 PC install)
-├── patch000.dat      # Optional (official patch, if present in your install)
-├── data/             # Optional (loose game data/patches)
-├── sound/            # Optional (music & sound effects)
-├── ce.dat            # REQUIRED: Community Edition assets (see note below)
-├── f2_res.dat        # Recommended: Hi-res interface bar assets (see note below)
-└── fallout2.cfg      # Optional: Engine config (resolution, audio, language)
-```
+Required files: **`master.dat`**, **`critter.dat`** and **`ce.dat`**. Recommended: `patch000.dat`, `data/`, `sound/` and `f2_res.dat`.
 
-> **IMPORTANT — `ce.dat` is required:**  
-> `ce.dat` contains Community Edition specific UI assets, perks, and font resources. Download `ce.dat` from the official [fallout2-ce Releases](https://github.com/fallout2-ce/fallout2-ce/releases) and copy it directly to `/data/fallout2/`.
+> **IMPORTANT — `ce.dat` is required:**
+> `ce.dat` contains Community Edition specific UI assets, perks, and font resources. Download `ce.dat` from the official [fallout2-ce Releases](https://github.com/fallout2-ce/fallout2-ce/releases) and copy it directly into the game folder.
 
-> **`f2_res.dat` (Recommended for 1080p):**  
-> For widescreen/1080p rendering, copy `f2_res.dat` from the upstream [fallout2-ce files directory](https://github.com/fallout2-ce/fallout2-ce/tree/main/files) into `/data/fallout2/`. Without it, the interface bar remains at original 640×480 proportions.
+> **`f2_res.dat` (Recommended for 1080p):**
+> For widescreen/1080p rendering, copy `f2_res.dat` from the upstream [fallout2-ce files directory](https://github.com/fallout2-ce/fallout2-ce/tree/main/files) into the game folder. Without it, the interface bar remains at original 640×480 proportions.
 
 *Note: Filenames and directories can be in any casing (lowercase, uppercase, or mixed).*
+
+If you are planning to copy multiple mods, make sure the mod's name is in the game folder name (for example `falloutsonora`) — this way the boot menu will show the correct title in the list:
+
+| Folder name | Title shown |
+|---|---|
+| `fallout2` | `Fallout 2 (Default)` |
+| `falloutsonora` / `sonora` | `Fallout Sonora` |
+
+Supported names, but mods are not tested:
+
+| Folder name | Title shown |
+|---|---|
+| `fallout_nevada` / `nevada` | `Fallout Nevada` |
+| `olympus2207` / `olympus` | `Olympus 2207` |
+| `fallout1` / `fallout_et_tu` | `Fallout 1 (et tu)` |
+| `fallout2_rpu` / `rpu` | `Fallout 2 (RPU Restoration Project)` |
 
 ### 3. Install the PKG
 Download the latest `.pkg` file from [Releases](../../releases) and install it via **GoldHEN Debug Settings → Package Installer**.
 
-Saves are stored in **`/data/fallout2/SAVEGAME/`** and persist across PKG updates and reinstalls.
+Saves are stored in **`/game_folder/SAVEGAME/`** and persist across PKG updates and reinstalls.
 
 ---
 
@@ -71,7 +96,7 @@ Saves are stored in **`/data/fallout2/SAVEGAME/`** and persist across PKG update
 | **D-Pad** | Arrow keys / Navigate action menus & inventory |
 
 ### Customizing Controls
-All button bindings, analog stick behaviors, aim-assist ranges, and touchpad sensitivity parameters can be customized via **`/data/fallout2/ps4_controls.cfg`** (automatically generated on first boot, editable over FTP).
+All button bindings, analog stick behaviors, aim-assist ranges, and touchpad sensitivity parameters can be customized via **`ps4_controls.cfg`** in the game folder (automatically generated on first boot, editable over FTP).
 
 For full details on remapping actions and fine-tuning parameters, see the **[Controller Configuration Guide](docs/controller-mapping.md)**.
 
@@ -80,11 +105,13 @@ For full details on remapping actions and fine-tuning parameters, see the **[Con
 ## Troubleshooting
 
 - **Black screen or immediate close on boot:**
-  1. Confirm that `/data/fallout2/master.dat` and `/data/fallout2/critter.dat` are present and readable.
-  2. Confirm that `/data/fallout2/ce.dat` was copied from the fallout2-ce release.
-  3. Ensure permissions on `/data/fallout2/` allow read/write access.
+  1. Confirm that `master.dat` and `critter.dat` are present and readable in the game folder.
+  2. Confirm that `ce.dat` was copied from the fallout2-ce release.
+  3. Ensure permissions on the game folder allow read/write access.
 - **Save game error:**
-  Make sure `/data/fallout2/` is writable over FTP; the engine automatically creates the `/data/fallout2/SAVEGAME/` directory on first save.
+  Make sure the game folder is writable over FTP; the engine automatically creates the `SAVEGAME/` directory on first save.
+- **Boot menu shows the wrong title:**
+  Rename the game folder to one of the recognised names above, or drop a `title.txt` in the folder with the name you want on the first line.
 
 ---
 
