@@ -57,6 +57,8 @@ set(PS4_SYSTEM_LIBRARIES
     -lScePad
     -lSceVideoOut
     -lSceSysmodule
+    -lSceImeDialog
+    -lSceCommonDialog
 )
 
 # NOTE: this file is pulled in with include(), which shares the caller's
@@ -78,6 +80,8 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     "src/platform/ps4/ps4_gamepad.cc"
     "src/platform/ps4/ps4_video.h"
     "src/platform/ps4/ps4_video.cc"
+    "src/platform/ps4/ps4_ime.h"
+    "src/platform/ps4/ps4_ime.cc"
     "src/platform/ps4/ps4_gl_stubs.c"
 )
 target_include_directories(${EXECUTABLE_NAME} PRIVATE "src")

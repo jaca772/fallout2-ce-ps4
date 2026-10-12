@@ -1,0 +1,52 @@
+diff --git a/src/loadsave.cc b/src/loadsave.cc
+index f0dc6942..cafcc8a8 100644
+--- a/src/loadsave.cc
++++ b/src/loadsave.cc
+@@ -7,6 +7,12 @@
+ 
+ #include <algorithm>
+ 
++#ifdef __PS4__
++#include <unistd.h>
++#include "platform/ps4/ps4.h"
++#include "platform/ps4/ps4_ime.h"
++#endif
++
+ #include "art.h"
+ #include "automap.h"
+ #include "ce_save_game.h"
+@@ -2007,6 +2013,8 @@ static int lsgPerformSaveGame()
+ 
+ #if defined(__EMSCRIPTEN__)
+     do_save_idbfs_loadsave();
++#elif defined(__PS4__)
++    sync();
+ #endif
+ 
+     gLoadSaveMessageListItem.num = 140;
+@@ -2734,6 +2742,25 @@ static int _GetComment(int slot)
+ // 0x47F084
+ static int _get_input_str2(int win, int doneKeyCode, int cancelKeyCode, char* description, int maxLength, int x, int y, ColorWithFlags textColor, Color backgroundColor, int flags)
+ {
++#ifdef __PS4__
++    if (g_ps4Controls.imeEnabled) {
++        char buf[64];
++        Ps4ImeResult res = ps4ImeEdit("Save Description", description, maxLength,
++                                      PS4_IME_FILTER_TEXT, buf, sizeof(buf));
++        if (res == PS4_IME_RESULT_CONFIRMED) {
++            strncpy(description, buf, maxLength);
++            description[maxLength] = '\0';
++            if (g_ps4Controls.imeAutoconfirm) {
++                return 0;
++            }
++        } else if (res == PS4_IME_RESULT_CANCELED) {
++            if (g_ps4Controls.imeAutoconfirm) {
++                return -1;
++            }
++        }
++    }
++#endif
++
+     int cursorWidth = fontGetStringWidth("_") - 4;
+     int windowWidth = windowGetWidth(win);
+     int lineHeight = fontGetLineHeight();

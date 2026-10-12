@@ -60,6 +60,14 @@ void ps4GamepadClearPendingActions()
     s_actionQueueCount = 0;
 }
 
+static bool s_swallowButtonsUntilRelease = false;
+
+void ps4GamepadSwallowUntilRelease()
+{
+    memset(g_prevButtons, 0, sizeof(g_prevButtons));
+    s_swallowButtonsUntilRelease = true;
+}
+
 bool ps4GamepadQueueAction(Ps4GamepadActionType type, Object* target, int param)
 {
     if (s_isExecutingAction || combatIsTurnRunning()) {
@@ -631,10 +639,28 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         g_padRmb = false;
         g_padBoost = false;
 
-        static const struct {
-            SDL_GameControllerButton button;
-            int* action;
-        } kFaceButtons[] = {
+        if (s_swallowButtonsUntilRelease) {
+            bool anyPressed = false;
+            for (int i = 0; i < SDL_CONTROLLER_BUTTON_MAX; i++) {
+                bool b = (SDL_GameControllerGetButton(g_gamepad, (SDL_GameControllerButton)i) != 0);
+                if (b) anyPressed = true;
+                g_prevButtons[i] = b;
+            }
+            if (havePadData && (padButtons & (ORBIS_PAD_BUTTON_OPTIONS | ORBIS_PAD_BUTTON_TOUCH_PAD |
+                                              ORBIS_PAD_BUTTON_CROSS | ORBIS_PAD_BUTTON_CIRCLE |
+                                              ORBIS_PAD_BUTTON_TRIANGLE | ORBIS_PAD_BUTTON_SQUARE |
+                                              ORBIS_PAD_BUTTON_L1 | ORBIS_PAD_BUTTON_R1 |
+                                              ORBIS_PAD_BUTTON_L2 | ORBIS_PAD_BUTTON_R2))) {
+                anyPressed = true;
+            }
+            if (!anyPressed) {
+                s_swallowButtonsUntilRelease = false;
+            }
+        } else {
+            static const struct {
+                SDL_GameControllerButton button;
+                int* action;
+            } kFaceButtons[] = {
             { SDL_CONTROLLER_BUTTON_A, &g_ps4Controls.actCross },
             { SDL_CONTROLLER_BUTTON_B, &g_ps4Controls.actCircle },
             { SDL_CONTROLLER_BUTTON_X, &g_ps4Controls.actSquare },
@@ -734,6 +760,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
             } else {
                 g_lastDpadTicks = 0;
             }
+        }
         }
 
         // --- 0b. Aim assist (hold L2) ---

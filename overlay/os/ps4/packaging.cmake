@@ -63,10 +63,18 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E env ${DOTFIX} ${SFO_TOOL} sfo_new "${PS4_PKG_DIR}/sce_sys/param.sfo"
     COMMAND ${CMAKE_COMMAND} -E env ${DOTFIX} ${SFO_TOOL} sfo_setentry "${PS4_PKG_DIR}/sce_sys/param.sfo" APP_TYPE --type Integer --maxsize 4 --value 1
     COMMAND ${CMAKE_COMMAND} -E env ${DOTFIX} ${SFO_TOOL} sfo_setentry "${PS4_PKG_DIR}/sce_sys/param.sfo" APP_VER --type Utf8 --maxsize 8 --value "${PS4_VERSION}"
-    COMMAND ${CMAKE_COMMAND} -E env ${DOTFIX} ${SFO_TOOL} sfo_setentry "${PS4_PKG_DIR}/sce_sys/param.sfo" ATTRIBUTE --type Integer --maxsize 4 --value 0
+    # ATTRIBUTE bit 1 (value 0x02) = "Enter Button Assignment for the common
+    # dialog: Cross button". This is what makes the native OSK (sceImeDialog) use
+    # Cross (X) = confirm / enter and Circle (O) = cancel, instead of inheriting
+    # the console's system-wide Enter Button Assignment (which is Circle on many
+    # consoles and would otherwise give X = close, O = enter).
+    COMMAND ${CMAKE_COMMAND} -E env ${DOTFIX} ${SFO_TOOL} sfo_setentry "${PS4_PKG_DIR}/sce_sys/param.sfo" ATTRIBUTE --type Integer --maxsize 4 --value 2
     COMMAND ${CMAKE_COMMAND} -E env ${DOTFIX} ${SFO_TOOL} sfo_setentry "${PS4_PKG_DIR}/sce_sys/param.sfo" CATEGORY --type Utf8 --maxsize 4 --value "gd"
     COMMAND ${CMAKE_COMMAND} -E env ${DOTFIX} ${SFO_TOOL} sfo_setentry "${PS4_PKG_DIR}/sce_sys/param.sfo" CONTENT_ID --type Utf8 --maxsize 48 --value "${PS4_CONTENT_ID}"
     COMMAND ${CMAKE_COMMAND} -E env ${DOTFIX} ${SFO_TOOL} sfo_setentry "${PS4_PKG_DIR}/sce_sys/param.sfo" DOWNLOAD_DATA_SIZE --type Integer --maxsize 4 --value 0
+    # NOTE: there is no PS4 param.sfo field named ENTER_BUTTON_ASSIGN — that is a
+    # PS Vita field and is ignored on PS4. The PS4 mechanism is the ATTRIBUTE bit
+    # above (0x02 = Cross for common dialogs), so don't add it back here.
     COMMAND ${CMAKE_COMMAND} -E env ${DOTFIX} ${SFO_TOOL} sfo_setentry "${PS4_PKG_DIR}/sce_sys/param.sfo" SYSTEM_VER --type Integer --maxsize 4 --value 0
     COMMAND ${CMAKE_COMMAND} -E env ${DOTFIX} ${SFO_TOOL} sfo_setentry "${PS4_PKG_DIR}/sce_sys/param.sfo" TITLE --type Utf8 --maxsize 128 --value "${PS4_TITLE}"
     COMMAND ${CMAKE_COMMAND} -E env ${DOTFIX} ${SFO_TOOL} sfo_setentry "${PS4_PKG_DIR}/sce_sys/param.sfo" TITLE_ID --type Utf8 --maxsize 12 --value "${PS4_TITLE_ID}"

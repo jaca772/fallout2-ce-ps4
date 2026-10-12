@@ -116,6 +116,8 @@ struct Ps4ControlsConfig {
     int scaleMode = PS4_SCALE_LETTERBOX;           // Ps4ScaleMode (0 = letterbox/pillarbox, 1 = fill 16:9, 2 = integer)
     float stickDeadzone = 0.15f;     // radial analog stick deadzone (0.05..0.70, default 0.15)
     float stickCurve = 1.50f;        // analog response curve exponent (1.0..3.0, default 1.50)
+    int imeEnabled = 1;              // 1 = use native PS4 onscreen keyboard for text fields
+    int imeAutoconfirm = 1;          // 1 = automatically confirm input when keyboard is done
 };
 
 extern Ps4ControlsConfig g_ps4Controls;

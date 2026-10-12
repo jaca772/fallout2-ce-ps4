@@ -1,0 +1,73 @@
+diff --git a/src/dbox.cc b/src/dbox.cc
+index 823a7199..48c71d2c 100644
+--- a/src/dbox.cc
++++ b/src/dbox.cc
+@@ -23,6 +23,11 @@
+ #include "window_manager.h"
+ #include "word_wrap.h"
+ 
++#ifdef __PS4__
++#include "platform/ps4/ps4.h"
++#include "platform/ps4/ps4_ime.h"
++#endif
++
+ namespace fallout {
+ 
+ #define FILE_DIALOG_LINE_COUNT 12
+@@ -168,6 +173,24 @@ static constexpr InterfaceFrameId kInputDialogFrmIds[INPUT_DIALOG_FRM_COUNT] = {
+ // TODO: see if it could be used for `showSaveFileDialog`
+ static int _get_input_str(int win, int cancelKeyCode, std::string& text, int maxLength, int x, int y, ColorWithFlags textColor, Color backgroundColor, int flags)
+ {
++#ifdef __PS4__
++    if (g_ps4Controls.imeEnabled) {
++        char buf[64];
++        Ps4ImeResult res = ps4ImeEdit("Character Name", text.c_str(), maxLength,
++                                      PS4_IME_FILTER_TEXT, buf, sizeof(buf));
++        if (res == PS4_IME_RESULT_CONFIRMED) {
++            text = buf;
++            if (g_ps4Controls.imeAutoconfirm) {
++                return 0;
++            }
++        } else if (res == PS4_IME_RESULT_CANCELED) {
++            if (g_ps4Controls.imeAutoconfirm) {
++                return -1;
++            }
++        }
++    }
++#endif
++
+     int cursorWidth = fontGetStringWidth("_") - 4;
+     int windowWidth = windowGetWidth(win);
+     int lineHeight = fontGetLineHeight();
+@@ -1119,6 +1142,31 @@ int showSaveFileDialog(char* title, char** fileList, char* dest, int fileListLen
+     }
+     dest[fileNameLength] = '\0';
+ 
++#ifdef __PS4__
++    if (g_ps4Controls.imeEnabled) {
++        char buf[16];
++        Ps4ImeResult res = ps4ImeEdit("File Name", dest, 8,
++                                      PS4_IME_FILTER_DOS_FILENAME, buf, sizeof(buf));
++        if (res == PS4_IME_RESULT_CONFIRMED) {
++            strncpy(dest, buf, 8);
++            dest[8] = '\0';
++            if (g_ps4Controls.imeAutoconfirm) {
++                windowDestroy(win);
++                messageListFree(&messageList);
++                fontSetCurrent(oldFont);
++                return (dest[0] != '\0') ? 0 : 1;
++            }
++        } else if (res == PS4_IME_RESULT_CANCELED) {
++            if (g_ps4Controls.imeAutoconfirm) {
++                windowDestroy(win);
++                messageListFree(&messageList);
++                fontSetCurrent(oldFont);
++                return 1;
++            }
++        }
++    }
++#endif
++
+     char fileNameCopy[32];
+     strncpy(fileNameCopy, dest, 32);
+ 

@@ -62,6 +62,10 @@ void ps4GamepadProcessPendingActions();
 // Clear the pending action queue (e.g. on map/mode change).
 void ps4GamepadClearPendingActions();
 
+// Suppress button events until all currently held buttons are fully released.
+// Used after closing modal system dialogs (e.g. IME) to prevent click-through.
+void ps4GamepadSwallowUntilRelease();
+
 } // namespace fallout
 
 #endif // __PS4__

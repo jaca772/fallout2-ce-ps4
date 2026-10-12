@@ -572,7 +572,13 @@ static void ps4WriteDefaultControlsConfig(const char* path)
         "btn_l3=%s\n"
         "btn_r3=%s\n"
         "btn_share=%s\n"
-        "btn_options=%s\n",
+        "btn_options=%s\n"
+        "\n"
+        "# On-screen keyboard (PS4 native IME)\n"
+        "#  ime = 1 to use native PS4 keyboard for text fields (character name, save description, file name)\n"
+        "#  ime_autoconfirm = 1 to automatically confirm input when keyboard is done\n"
+        "ime=%d\n"
+        "ime_autoconfirm=%d\n",
         g_ps4Controls.touchSensitivity, g_ps4Controls.touchAccel,
         g_ps4Controls.touchSmoothing, g_ps4Controls.touchDeadzone,
         g_ps4Controls.cursorSpeed, g_ps4Controls.cursorSpeedBoost,
@@ -595,7 +601,8 @@ static void ps4WriteDefaultControlsConfig(const char* path)
         ps4ActionName(g_ps4Controls.actSquare), ps4ActionName(g_ps4Controls.actTriangle),
         ps4ActionName(g_ps4Controls.actL1), ps4ActionName(g_ps4Controls.actR1),
         ps4ActionName(g_ps4Controls.actL3), ps4ActionName(g_ps4Controls.actR3),
-        ps4ActionName(g_ps4Controls.actShare), ps4ActionName(g_ps4Controls.actOptions));
+        ps4ActionName(g_ps4Controls.actShare), ps4ActionName(g_ps4Controls.actOptions),
+        g_ps4Controls.imeEnabled, g_ps4Controls.imeAutoconfirm);
     fclose(f);
     ps4Log("[ps4] wrote default ps4_controls.cfg\n");
 }
@@ -726,6 +733,10 @@ void ps4ReadControlsConfig()
             int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actShare = a;
         } else if (strcmp(key, "btn_options") == 0) {
             int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actOptions = a;
+        } else if (strcmp(key, "ime") == 0) {
+            g_ps4Controls.imeEnabled = atoi(val);
+        } else if (strcmp(key, "ime_autoconfirm") == 0) {
+            g_ps4Controls.imeAutoconfirm = atoi(val);
         }
     }
     fclose(f);
