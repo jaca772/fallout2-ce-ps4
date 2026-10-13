@@ -12,7 +12,7 @@ struct Ps4GameEntry {
     std::string path;       // Full absolute path, e.g. "/data/fallout2" or "/data/FalloutSonora"
     std::string title;      // User-friendly display title, e.g. "Fallout 2 (Default)" or "Fallout Sonora"
     std::string folderName; // Folder name, e.g. "fallout2" or "FalloutSonora"
-    bool isDefault;
+    bool isDefault = false;
 };
 
 // Scans console data directories for game folders containing master.dat.

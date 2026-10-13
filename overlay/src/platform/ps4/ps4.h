@@ -3,6 +3,8 @@
 
 #ifdef __PS4__
 
+#include <stddef.h>
+
 namespace fallout {
 
 // Dynamic game data path on the console (e.g. /data/fallout2, /data/FalloutSonora).
@@ -15,6 +17,15 @@ void ps4SetDataPath(const char* path);
 // The path is lexically normalized first, so ".." cannot be used to escape.
 // Symlinks are not resolved.
 bool ps4IsPathWritable(const char* nativePath);
+
+// Resolve an absolute [path] against real on-disk casing (the PS4 FS is
+// case-sensitive, Fallout 2 data mixes case). Fills [out] and returns true on a
+// full match. When the tail does not exist yet (a new save file/dir), still fills
+// [out] with the resolved parent prefix + the unresolved tail and returns false,
+// so a subsequent create/write lands in the case-corrected directory instead of
+// failing with ENOENT on a differently-cased member. Implemented in
+// platform_compat.cc; used by the file-find layer too.
+bool ps4ResolveCaseInsensitive(const char* path, char* out, size_t outSize);
 
 // Writes a printf-formatted line to the console debug channel (klog). Works
 // before SDL_Init and before the heap is up — unlike SDL_Log (its sink is only

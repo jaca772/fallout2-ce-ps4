@@ -14,6 +14,9 @@ namespace fallout {
 
 #define PS4_FB_COUNT 2
 #define PS4_FB_ALIGN 0x200000
+// Output is capped to 1080p (1920 wide); the display upscales 4K. Every static
+// per-row/per-column buffer is sized to this cap.
+#define PS4_MAX_FB_WIDTH 1920
 
 namespace {
 
@@ -212,7 +215,7 @@ bool ps4VideoInit(int srcW, int srcH)
     // Cap to 1080p: 720p and 1080p pass through unchanged (valid flip modes), but 4K
     // (3840x2160) is registered as 1080p and the display upscales — registering 4K
     // buffers needs the 4K privilege and otherwise fails (app exits to the menu).
-    g.outW = reportedW > 1920 ? 1920 : reportedW;
+    g.outW = reportedW > PS4_MAX_FB_WIDTH ? PS4_MAX_FB_WIDTH : reportedW;
     g.outH = reportedH > 1080 ? 1080 : reportedH;
     g.pitch = g.outW;
     ps4Log("[ps4] videoout out %ux%u (panel %ux%u), src %dx%d\n",
@@ -334,8 +337,8 @@ static void ps4CompositeMovie(uint32_t* fb)
     if (dw <= 0 || dh <= 0) return;
 
     // Fast-path: precompute horizontal mapping on stack to eliminate divisions in inner loop.
-    int movieColLut[1920];
-    int lutCount = dw <= 1920 ? dw : 1920;
+    int movieColLut[PS4_MAX_FB_WIDTH];
+    int lutCount = dw <= PS4_MAX_FB_WIDTH ? dw : PS4_MAX_FB_WIDTH;
     for (int x = 0; x < lutCount; x++) {
         int sx = (int)((int64_t)x * g.movieW / dw);
         movieColLut[x] = sx < g.movieW ? sx : g.movieW - 1;
@@ -346,7 +349,7 @@ static void ps4CompositeMovie(uint32_t* fb)
     if (endX <= startX) return;
 
     // NOTE: s_movieRow resides in cached RAM to avoid uncached reads from WC framebuffer.
-    static uint32_t s_movieRow[1920];
+    static uint32_t s_movieRow[PS4_MAX_FB_WIDTH];
     int prevSrcY = -1;
     for (int y = 0; y < dh; y++) {
         int py = dy0 + y;
@@ -359,7 +362,7 @@ static void ps4CompositeMovie(uint32_t* fb)
             const uint32_t* srow = g.movie + (size_t)srcY * g.movieW;
             for (int px = startX; px < endX; px++) {
                 int x = px - dx0;
-                int srcX = x < 1920 ? movieColLut[x] : (int)((int64_t)x * g.movieW / dw);
+                int srcX = (x >= 0 && x < lutCount) ? movieColLut[x] : (int)((int64_t)x * g.movieW / dw);
                 s_movieRow[px - startX] = toVout(srow[srcX]);
             }
             prevSrcY = srcY;
@@ -400,10 +403,12 @@ void ps4VideoPresent(SDL_Surface* frame)
         }
     }
 
+#ifdef PS4_LOG_FRAME_PACING
     uint64_t t0 = sceKernelGetProcessTime();
     static uint64_t s_lastPresentTime = 0;
     uint64_t frameDelta = s_lastPresentTime > 0 ? (t0 - s_lastPresentTime) : 0;
     s_lastPresentTime = t0;
+#endif
 
     uint32_t* fb = (uint32_t*)g.fb[g.activeIdx];
     const uint32_t* src = (const uint32_t*)frame->pixels;
@@ -418,7 +423,7 @@ void ps4VideoPresent(SDL_Surface* frame)
         // as WC (Write-Combined) direct GPU memory. Never read from fb (e.g. duplicating
         // previous lines via memcpy from drow - pitch) as uncached WC reads stall the CPU pipeline
         // and degrade framerate from 60 FPS down to ~10 FPS.
-        static uint32_t s_rowBuf[1920];
+        static uint32_t s_rowBuf[PS4_MAX_FB_WIDTH];
         for (uint32_t oy = 0; oy < g.dstH; oy++) {
             uint32_t* drow = fb + (size_t)(g.dstY + oy) * g.pitch + g.dstX;
             if (oy == 0 || g.rowLut[oy] != g.rowLut[oy - 1]) {
@@ -470,17 +475,17 @@ void ps4VideoMovieOverlaySet(const void* pixels, int srcW, int srcH, SDL_Rect ds
         g.movieActive = false;
         return;
     }
-    int need = srcW * srcH;
-    if (need > g.movieCap) {
-        uint32_t* n = (uint32_t*)realloc(g.movie, (size_t)need * 4);
+    size_t need = (size_t)srcW * (size_t)srcH;
+    if (need > (size_t)g.movieCap) {
+        uint32_t* n = (uint32_t*)realloc(g.movie, need * 4);
         if (n == nullptr) {
             g.movieActive = false;
             return;
         }
         g.movie = n;
-        g.movieCap = need;
+        g.movieCap = (int)need;
     }
-    memcpy(g.movie, pixels, (size_t)need * 4);
+    memcpy(g.movie, pixels, need * 4);
     g.movieW = srcW;
     g.movieH = srcH;
     g.movieDst = dst;

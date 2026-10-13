@@ -106,7 +106,7 @@ static void utf8ToUtf16(const char* src, uint16_t* dst, size_t dstCapacity)
     }
     size_t d = 0;
     const unsigned char* p = reinterpret_cast<const unsigned char*>(src);
-    while (*p != '\0' && d + 2 < dstCapacity) {
+    while (*p != '\0' && d + 1 < dstCapacity) {
         uint32_t cp = 0;
         if (*p < 0x80) {
             cp = *p++;
@@ -235,9 +235,12 @@ Ps4ImeResult ps4ImeEdit(const char* title, const char* initial, int maxLen,
     while (sceImeDialogGetStatus() == ORBIS_DIALOG_STATUS_RUNNING) {
         SDL_PumpEvents();
         if (gSdlTextureSurface != nullptr) {
+            // ps4VideoPresent already blocks on VSync (sceKernelWaitEqueue), so a
+            // further sleep would halve the IME refresh to ~30 FPS.
             ps4VideoPresent(gSdlTextureSurface);
+        } else {
+            sceKernelUsleep(16000);
         }
-        sceKernelUsleep(16000);
     }
 
     OrbisDialogResult dialogRes;

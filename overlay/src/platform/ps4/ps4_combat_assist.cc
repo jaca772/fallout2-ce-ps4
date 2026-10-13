@@ -259,8 +259,23 @@ bool combatGamepadCanEndCombat()
         // i.e. the player) — same condition combatAttemptEnd uses.
         int critterTeam = critter->data.critter.combat.team;
         Object* critterWhoHitMe = critter->data.critter.combat.whoHitMe;
+
+        // whoHitMe is a raw pointer that can dangle after its target is removed
+        // from the combat list mid-fight (mirrors the engine's own
+        // combatClearWhoHitMeOutsideCombatList). Only dereference it when the
+        // target is still an active combatant; otherwise treat it as "not provoked".
+        bool whoHitMeIsLive = false;
+        if (critterWhoHitMe != nullptr) {
+            for (int li = 0; li < total; li++) {
+                if (combatList[li] == critterWhoHitMe) {
+                    whoHitMeIsLive = true;
+                    break;
+                }
+            }
+        }
+
         bool hostile = critterTeam != dudeTeam
-            || (critterWhoHitMe != nullptr && critterWhoHitMe->data.critter.combat.team == critterTeam);
+            || (whoHitMeIsLive && critterWhoHitMe->data.critter.combat.team == critterTeam);
         if (hostile) {
             return false; // a living hostile still in the fight -> not safe to end
         }

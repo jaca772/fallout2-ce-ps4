@@ -47,7 +47,6 @@ extern "C" int __wrap___cxa_atexit(void (*)(void*), void*, void*)
 // -Wl,--wrap in CMakeLists) to ask LNC to close the app and return to the PS4
 // dashboard. sceSystemServiceLoadExec("exit", ...) is the OpenOrbis idiom for
 // this and never issues the forbidden syscall. Never returns.
-#include "platform/ps4/ps4_video.h"
 
 static void ps4EarlyLog(const char* fmt, ...);
 
@@ -105,7 +104,7 @@ extern "C" [[noreturn]] void __wrap__exit(int status)
 // the primitive the debug channel forwards. Format into a stack buffer.
 static void ps4EarlyLog(const char* fmt, ...)
 {
-    char buf[160];
+    char buf[256];
     va_list ap;
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
@@ -293,7 +292,7 @@ bool ps4IsPathWritable(const char* nativePath)
 // ps4EarlyLog used above.
 void ps4Log(const char* fmt, ...)
 {
-    char buf[160];
+    char buf[256];
     va_list ap;
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
@@ -400,20 +399,20 @@ static const char* ps4ScaleModeName(int m)
 // Map an action name to a PS4_ACT_* value (-1 = unknown, keep current).
 static int ps4ParseAction(const char* s)
 {
-    if (strncmp(s, "lmb", 3) == 0) return PS4_ACT_LMB;
-    if (strncmp(s, "rmb", 3) == 0) return PS4_ACT_RMB;
-    if (strncmp(s, "boost", 5) == 0) return PS4_ACT_CURSORBOOST;
-    if (strncmp(s, "esc", 3) == 0) return PS4_ACT_ESC;
-    if (strncmp(s, "inventory", 9) == 0) return PS4_ACT_INVENTORY;
-    if (strncmp(s, "charsheet", 9) == 0) return PS4_ACT_CHARSHEET;
-    if (strncmp(s, "skilldex", 8) == 0) return PS4_ACT_SKILLDEX;
-    if (strncmp(s, "pipboy", 6) == 0) return PS4_ACT_PIPBOY;
-    if (strncmp(s, "endcombat", 9) == 0) return PS4_ACT_ENDCOMBAT;
-    if (strncmp(s, "combat", 6) == 0) return PS4_ACT_COMBAT;
-    if (strncmp(s, "reload", 6) == 0) return PS4_ACT_RELOAD;
-    if (strncmp(s, "weaponmode", 10) == 0) return PS4_ACT_WEAPONMODE;
-    if (strncmp(s, "swaphands", 9) == 0) return PS4_ACT_SWAPHANDS;
-    if (strncmp(s, "none", 4) == 0) return PS4_ACT_NONE;
+    if (strcmp(s, "lmb") == 0) return PS4_ACT_LMB;
+    if (strcmp(s, "rmb") == 0) return PS4_ACT_RMB;
+    if (strcmp(s, "boost") == 0) return PS4_ACT_CURSORBOOST;
+    if (strcmp(s, "esc") == 0) return PS4_ACT_ESC;
+    if (strcmp(s, "inventory") == 0) return PS4_ACT_INVENTORY;
+    if (strcmp(s, "charsheet") == 0) return PS4_ACT_CHARSHEET;
+    if (strcmp(s, "skilldex") == 0) return PS4_ACT_SKILLDEX;
+    if (strcmp(s, "pipboy") == 0) return PS4_ACT_PIPBOY;
+    if (strcmp(s, "endcombat") == 0) return PS4_ACT_ENDCOMBAT;
+    if (strcmp(s, "combat") == 0) return PS4_ACT_COMBAT;
+    if (strcmp(s, "reload") == 0) return PS4_ACT_RELOAD;
+    if (strcmp(s, "weaponmode") == 0) return PS4_ACT_WEAPONMODE;
+    if (strcmp(s, "swaphands") == 0) return PS4_ACT_SWAPHANDS;
+    if (strcmp(s, "none") == 0) return PS4_ACT_NONE;
     return -1;
 }
 
@@ -451,11 +450,11 @@ static const char* ps4WrsName(int r)
 
 static int ps4ParseWrs(const char* s)
 {
-    if (strncmp(s, "cursor", 6) == 0) return PS4_WRS_CURSOR;
-    if (strncmp(s, "centered", 8) == 0) return PS4_WRS_CENTERED;
-    if (strncmp(s, "camera", 6) == 0) return PS4_WRS_CAMERA;
-    if (strncmp(s, "walk", 4) == 0) return PS4_WRS_WALK;
-    if (strncmp(s, "off", 3) == 0) return PS4_WRS_OFF;
+    if (strcmp(s, "cursor") == 0) return PS4_WRS_CURSOR;
+    if (strcmp(s, "centered") == 0) return PS4_WRS_CENTERED;
+    if (strcmp(s, "camera") == 0) return PS4_WRS_CAMERA;
+    if (strcmp(s, "walk") == 0) return PS4_WRS_WALK;
+    if (strcmp(s, "off") == 0) return PS4_WRS_OFF;
     return -1;
 }
 
@@ -641,6 +640,12 @@ void ps4ReadControlsConfig()
         }
         *eq = '\0';
         char* key = ps4Trim(line);
+        // Strip an inline comment ("key=value  # note") so the value is parsed
+        // exactly; ps4Trim then removes any trailing whitespace left behind.
+        char* hash = strchr(eq + 1, '#');
+        if (hash != nullptr) {
+            *hash = '\0';
+        }
         char* val = ps4Trim(eq + 1);
         if (*key == '#' || *key == '[' || *key == '\0') {
             continue;
@@ -650,7 +655,6 @@ void ps4ReadControlsConfig()
             if (strcmp(val, "fill") == 0) g_ps4Controls.scaleMode = PS4_SCALE_FILL;
             else if (strcmp(val, "integer") == 0) g_ps4Controls.scaleMode = PS4_SCALE_INTEGER;
             else g_ps4Controls.scaleMode = PS4_SCALE_LETTERBOX;
-            ps4VideoSetScaleMode((Ps4ScaleMode)g_ps4Controls.scaleMode);
         } else if (strcmp(key, "stick_deadzone") == 0) {
             g_ps4Controls.stickDeadzone = (float)atof(val);
         } else if (strcmp(key, "stick_curve") == 0) {
@@ -805,7 +809,6 @@ void ps4ReadControlsConfig()
 bool ps4MountData()
 {
     jbc_get_cred(&g_ps4OrigCred);
-    g_ps4OrigCredValid = true;
     jbc_cred cred = g_ps4OrigCred;
     jbc_jailbreak_cred(&cred);
     int cr = jbc_set_cred(&cred);
@@ -815,6 +818,7 @@ bool ps4MountData()
         ps4ShowJailbreakError();
         return false;
     }
+    g_ps4OrigCredValid = true;
 
     std::string chosenPath = ps4SelectGameFolder();
     if (chosenPath.empty()) {

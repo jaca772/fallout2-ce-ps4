@@ -1,5 +1,5 @@
 diff --git a/src/file_find.cc b/src/file_find.cc
-index 232f7ab3..e53e6e3c 100644
+index 232f7ab3..3b2d2866 100644
 --- a/src/file_find.cc
 +++ b/src/file_find.cc
 @@ -1,10 +1,15 @@
@@ -18,7 +18,7 @@ index 232f7ab3..e53e6e3c 100644
  namespace fallout {
  
  // 0x4E6380 xsys_findfirst
-@@ -30,6 +35,23 @@ bool fileFindFirst(const char* path, DirectoryFileFindData* findData)
+@@ -30,6 +35,32 @@ bool fileFindFirst(const char* path, DirectoryFileFindData* findData)
  
      char basePath[COMPAT_MAX_PATH];
      compat_makepath(basePath, drive, dir, nullptr, nullptr);
@@ -35,6 +35,15 @@ index 232f7ab3..e53e6e3c 100644
 +        char absBasePath[COMPAT_MAX_PATH];
 +        snprintf(absBasePath, sizeof(absBasePath), "%s/%s", PS4_DATA_PATH, basePath);
 +        strncpy(basePath, absBasePath, sizeof(basePath) - 1);
++        basePath[sizeof(basePath) - 1] = '\0';
++    }
++
++    // opendir() is also case-sensitive: enumerating "MAPS\*.SAV" when the on-disk
++    // directory is "maps" returns NULL. Resolve the base directory against real
++    // on-disk casing before opening it, mirroring compat_prepare_native_path.
++    char resolvedBasePath[COMPAT_MAX_PATH];
++    if (ps4ResolveCaseInsensitive(basePath, resolvedBasePath, sizeof(resolvedBasePath))) {
++        strncpy(basePath, resolvedBasePath, sizeof(basePath) - 1);
 +        basePath[sizeof(basePath) - 1] = '\0';
 +    }
 +#endif

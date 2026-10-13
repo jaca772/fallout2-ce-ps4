@@ -1,5 +1,5 @@
 diff --git a/src/xfile.cc b/src/xfile.cc
-index 1e6c7124..d1e7e505 100644
+index 1e6c7124..124aa70c 100644
 --- a/src/xfile.cc
 +++ b/src/xfile.cc
 @@ -14,6 +14,11 @@
@@ -14,20 +14,13 @@ index 1e6c7124..d1e7e505 100644
  namespace fallout {
  
  typedef enum XFileEnumerationEntryType {
-@@ -59,7 +64,19 @@ int xfileClose(XFile* stream)
+@@ -59,7 +64,12 @@ int xfileClose(XFile* stream)
          rc = gzclose(stream->gzfile);
          break;
      default:
 -        rc = fclose(stream->file);
 +        if (stream->file != nullptr) {
 +            fflush(stream->file);
-+#ifdef __PS4__
-+            int fd = fileno(stream->file);
-+            int flags = fcntl(fd, F_GETFL);
-+            if (flags != -1 && ((flags & O_ACCMODE) == O_WRONLY || (flags & O_ACCMODE) == O_RDWR)) {
-+                fsync(fd);
-+            }
-+#endif
 +            rc = fclose(stream->file);
 +        } else {
 +            rc = 0;
@@ -35,7 +28,7 @@ index 1e6c7124..d1e7e505 100644
          break;
      }
  
-@@ -754,9 +771,8 @@ void xlistFree(XList* xlist)
+@@ -754,9 +764,8 @@ void xlistFree(XList* xlist)
  // 0x4DFFAC xmkdir
  static int xbaseMakeDirectory(const char* filePath)
  {
@@ -47,7 +40,7 @@ index 1e6c7124..d1e7e505 100644
      }
  
      char drive[COMPAT_MAX_DRIVE];
-@@ -781,41 +797,20 @@ static int xbaseMakeDirectory(const char* filePath)
+@@ -781,41 +790,20 @@ static int xbaseMakeDirectory(const char* filePath)
          if (curr == nullptr) {
              // Either there are no directory-based xbase, or there are no open
              // xbases at all - resolve path against current working directory.

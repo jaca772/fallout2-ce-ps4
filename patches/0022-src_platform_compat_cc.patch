@@ -1,5 +1,5 @@
 diff --git a/src/platform_compat.cc b/src/platform_compat.cc
-index a9a6c10d..0ff6f4e3 100644
+index a9a6c10d..172bf5b7 100644
 --- a/src/platform_compat.cc
 +++ b/src/platform_compat.cc
 @@ -13,10 +13,16 @@
@@ -28,8 +28,133 @@ index a9a6c10d..0ff6f4e3 100644
  #endif
  
  #include <SDL.h>
-@@ -100,8 +104,21 @@ static void compatDirectoryEntryCacheClear()
+@@ -98,12 +102,159 @@ static void compatDirectoryEntryCacheClear()
+ }
+ #endif
  
++#ifdef __PS4__
++// PS4's filesystem is case-sensitive, but Fallout 2's data mixes case (the engine
++// asks for `data\sound\music\...` while a real install may hold `SOUND`/`Sound`).
++// Resolve `path` (absolute) against the real on-disk names, matching each
++// component case-insensitively via a directory scan. Fills `out` and returns true
++// on a full match; false otherwise. Exact components hit the fast access() path,
++// so this only scans where the case actually differs. Removes the old manual
++// "rename sound to uppercase" step — any casing now just works.
++static bool ps4ResolveCaseInsensitiveImpl(const char* path, char* out, size_t outSize)
++{
++    if (path == nullptr || path[0] != '/') {
++        return false;
++    }
++
++    // Fast path: the exact path already exists (the common case after a first
++    // successful resolution or when the caller's casing already matches disk).
++    // One access() instead of a per-component directory scan.
++    if (access(path, F_OK) == 0) {
++        strncpy(out, path, outSize - 1);
++        out[outSize - 1] = '\0';
++        return true;
++    }
++
++    char resolved[COMPAT_MAX_PATH];
++    resolved[0] = '/';
++    resolved[1] = '\0';
++    size_t rlen = 1; // length of `resolved` ("/" => 1)
++    const char* p = path + 1;
++
++    while (*p != '\0') {
++        const char* slash = strchr(p, '/');
++        size_t complen = slash != nullptr ? (size_t)(slash - p) : strlen(p);
++        if (complen == 0) { // collapse "//"
++            p = (slash != nullptr) ? slash + 1 : p + complen;
++            continue;
++        }
++        if (complen >= 256 || rlen + 1 + complen >= sizeof(resolved)) {
++            // Best-effort: keep the resolved parent prefix + the unresolved tail.
++            snprintf(out, outSize, "%s%s%s", resolved, rlen == 1 ? "" : "/", p);
++            return false;
++        }
++
++        char comp[256];
++        memcpy(comp, p, complen);
++        comp[complen] = '\0';
++
++        char candidate[COMPAT_MAX_PATH];
++        if (rlen == 1) {
++            snprintf(candidate, sizeof(candidate), "/%s", comp);
++        } else {
++            snprintf(candidate, sizeof(candidate), "%s/%s", resolved, comp);
++        }
++
++        if (access(candidate, F_OK) == 0) {
++            strcpy(resolved, candidate);
++        } else {
++            DIR* dir = opendir(resolved);
++            bool found = false;
++            if (dir != nullptr) {
++                struct dirent* entry;
++                while ((entry = readdir(dir)) != nullptr) {
++                    if (SDL_strcasecmp(entry->d_name, comp) == 0) {
++                        if (rlen == 1) {
++                            snprintf(candidate, sizeof(candidate), "/%s", entry->d_name);
++                        } else {
++                            snprintf(candidate, sizeof(candidate), "%s/%s", resolved, entry->d_name);
++                        }
++                        found = true;
++                        break;
++                    }
++                }
++                closedir(dir);
++            }
++            if (!found) {
++                // The tail does not exist yet (a new save file or subdirectory).
++                // Emit the resolved existing parent prefix + the unresolved tail so
++                // a subsequent create/write lands in the case-corrected directory
++                // instead of ENOENT-ing on a differently-cased member.
++                snprintf(out, outSize, "%s%s%s", resolved, rlen == 1 ? "" : "/", p);
++                return false;
++            }
++            strcpy(resolved, candidate);
++        }
++        rlen = strlen(resolved);
++
++        if (slash == nullptr) {
++            break;
++        }
++        p = slash + 1;
++    }
++
++    strncpy(out, resolved, outSize - 1);
++    out[outSize - 1] = '\0';
++    return true;
++}
++
++bool ps4ResolveCaseInsensitive(const char* path, char* out, size_t outSize)
++{
++    uint64_t t0 = sceKernelGetProcessTime();
++    bool res = ps4ResolveCaseInsensitiveImpl(path, out, outSize);
++    uint64_t dt = sceKernelGetProcessTime() - t0;
++
++    static uint32_t s_resolveCalls = 0;
++    static uint32_t s_resolveHits = 0;
++    static uint64_t s_totalUs = 0;
++
++    s_resolveCalls++;
++    if (res) {
++        s_resolveHits++;
++    }
++    s_totalUs += dt;
++
++    if (s_resolveCalls % 100 == 0 || dt >= 5000) {
++        ps4Log("[ps4] case-resolve: %u calls (%u hits, %u misses), avg %lu us, last %lu us%s\n",
++               s_resolveCalls, s_resolveHits, s_resolveCalls - s_resolveHits,
++               (unsigned long)(s_totalUs / s_resolveCalls), (unsigned long)dt,
++               dt >= 5000 ? " [SLOW]" : "");
++    }
++
++    return res;
++}
++#endif
++
  static void compat_prepare_native_path(char* nativePath, const char* path)
  {
 +#ifdef __PS4__
@@ -43,14 +168,27 @@ index a9a6c10d..0ff6f4e3 100644
 +        strncpy(nativePath, path, COMPAT_MAX_PATH - 1);
 +        nativePath[COMPAT_MAX_PATH - 1] = '\0';
 +    }
++    compat_windows_path_to_native(nativePath);
++
++    // Resolve the now-absolute path against real on-disk casing for every path
++    // consumer (fopen/gzopen/mkdir/remove/rename/access/is_dir/file_exists). The
++    // old compat_resolve_path is a no-op on PS4 (its directory cache is empty),
++    // which left case-insensitivity to a per-call read-miss retry in compat_fopen
++    // only — writes and directory enumeration still ENOENT-ed on wrong-cased paths.
++    char resolved[COMPAT_MAX_PATH];
++    ps4ResolveCaseInsensitive(nativePath, resolved, sizeof(resolved));
++    strncpy(nativePath, resolved, COMPAT_MAX_PATH - 1);
++    nativePath[COMPAT_MAX_PATH - 1] = '\0';
 +#else
      strncpy(nativePath, path, COMPAT_MAX_PATH - 1);
      nativePath[COMPAT_MAX_PATH - 1] = '\0';
-+#endif
      compat_windows_path_to_native(nativePath);
      compat_resolve_path(nativePath);
++#endif
  }
-@@ -283,11 +300,23 @@ long compat_filelength(int fd)
+ 
+ int compat_stricmp(const char* string1, const char* string2)
+@@ -283,11 +434,23 @@ long compat_filelength(int fd)
  
  int compat_mkdir(const char* path)
  {
@@ -74,7 +212,7 @@ index a9a6c10d..0ff6f4e3 100644
  #ifdef _WIN32
      int rc = mkdir(nativePath);
  #else
-@@ -314,13 +343,27 @@ int compat_mkdir_recursive(const char* path)
+@@ -314,13 +477,27 @@ int compat_mkdir_recursive(const char* path)
          if (*sep == '\\' || *sep == '/') {
              char saved = *sep;
              *sep = '\0';
@@ -105,7 +243,7 @@ index a9a6c10d..0ff6f4e3 100644
  }
  
  bool compat_is_dir(const char* path)
-@@ -368,12 +411,118 @@ unsigned int compat_timeGetTime()
+@@ -368,9 +545,7 @@ unsigned int compat_timeGetTime()
  #ifdef _WIN32
      return timeGetTime();
  #else
@@ -116,118 +254,7 @@ index a9a6c10d..0ff6f4e3 100644
  #endif
  }
  
-+#ifdef __PS4__
-+// PS4's filesystem is case-sensitive, but Fallout 2's data mixes case (the engine
-+// asks for `data\sound\music\...` while a real install may hold `SOUND`/`Sound`).
-+// Resolve `path` (absolute) against the real on-disk names, matching each
-+// component case-insensitively via a directory scan. Fills `out` and returns true
-+// on a full match; false otherwise. Exact components hit the fast access() path,
-+// so this only scans where the case actually differs. Removes the old manual
-+// "rename sound to uppercase" step — any casing now just works.
-+static bool ps4ResolveCaseInsensitiveImpl(const char* path, char* out, size_t outSize)
-+{
-+    if (path == nullptr || path[0] != '/') {
-+        return false;
-+    }
-+
-+    char resolved[COMPAT_MAX_PATH];
-+    resolved[0] = '/';
-+    resolved[1] = '\0';
-+    size_t rlen = 1; // length of `resolved` ("/" => 1)
-+    const char* p = path + 1;
-+
-+    while (*p != '\0') {
-+        const char* slash = strchr(p, '/');
-+        size_t complen = slash != nullptr ? (size_t)(slash - p) : strlen(p);
-+        if (complen == 0) { // collapse "//"
-+            p = (slash != nullptr) ? slash + 1 : p + complen;
-+            continue;
-+        }
-+        if (complen >= 256 || rlen + 1 + complen >= sizeof(resolved)) {
-+            return false;
-+        }
-+
-+        char comp[256];
-+        memcpy(comp, p, complen);
-+        comp[complen] = '\0';
-+
-+        char candidate[COMPAT_MAX_PATH];
-+        if (rlen == 1) {
-+            snprintf(candidate, sizeof(candidate), "/%s", comp);
-+        } else {
-+            snprintf(candidate, sizeof(candidate), "%s/%s", resolved, comp);
-+        }
-+
-+        if (access(candidate, F_OK) == 0) {
-+            strcpy(resolved, candidate);
-+        } else {
-+            DIR* dir = opendir(resolved);
-+            if (dir == nullptr) {
-+                return false;
-+            }
-+            bool found = false;
-+            struct dirent* entry;
-+            while ((entry = readdir(dir)) != nullptr) {
-+                if (SDL_strcasecmp(entry->d_name, comp) == 0) {
-+                    if (rlen == 1) {
-+                        snprintf(candidate, sizeof(candidate), "/%s", entry->d_name);
-+                    } else {
-+                        snprintf(candidate, sizeof(candidate), "%s/%s", resolved, entry->d_name);
-+                    }
-+                    found = true;
-+                    break;
-+                }
-+            }
-+            closedir(dir);
-+            if (!found) {
-+                return false;
-+            }
-+            strcpy(resolved, candidate);
-+        }
-+        rlen = strlen(resolved);
-+
-+        if (slash == nullptr) {
-+            break;
-+        }
-+        p = slash + 1;
-+    }
-+
-+    strncpy(out, resolved, outSize - 1);
-+    out[outSize - 1] = '\0';
-+    return true;
-+}
-+
-+static bool ps4ResolveCaseInsensitive(const char* path, char* out, size_t outSize)
-+{
-+    uint64_t t0 = sceKernelGetProcessTime();
-+    bool res = ps4ResolveCaseInsensitiveImpl(path, out, outSize);
-+    uint64_t dt = sceKernelGetProcessTime() - t0;
-+
-+    static uint32_t s_resolveCalls = 0;
-+    static uint32_t s_resolveHits = 0;
-+    static uint64_t s_totalUs = 0;
-+
-+    s_resolveCalls++;
-+    if (res) {
-+        s_resolveHits++;
-+    }
-+    s_totalUs += dt;
-+
-+    if (s_resolveCalls % 100 == 0 || dt >= 5000) {
-+        ps4Log("[ps4] case-resolve: %u calls (%u hits, %u misses), avg %lu us, last %lu us%s\n",
-+               s_resolveCalls, s_resolveHits, s_resolveCalls - s_resolveHits,
-+               (unsigned long)(s_totalUs / s_resolveCalls), (unsigned long)dt,
-+               dt >= 5000 ? " [SLOW]" : "");
-+    }
-+
-+    return res;
-+}
-+#endif
-+
- FILE* compat_fopen(const char* path, const char* mode)
- {
-     bool mayWrite = compatFileModeMayWrite(mode);
-@@ -383,7 +532,25 @@ FILE* compat_fopen(const char* path, const char* mode)
+@@ -383,6 +558,15 @@ FILE* compat_fopen(const char* path, const char* mode)
  
      char nativePath[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativePath, path);
@@ -241,19 +268,9 @@ index a9a6c10d..0ff6f4e3 100644
 +#endif
 +
      FILE* stream = fopen(nativePath, mode);
-+#ifdef __PS4__
-+    // Case-insensitive retry on a read miss (see ps4ResolveCaseInsensitive).
-+    if (stream == nullptr && strchr(mode, 'r') != nullptr) {
-+        char resolved[COMPAT_MAX_PATH];
-+        if (ps4ResolveCaseInsensitive(nativePath, resolved, sizeof(resolved))) {
-+            stream = fopen(resolved, mode);
-+        }
-+    }
-+#endif
      if (mayWrite && stream != nullptr) {
          compatDirectoryEntryCacheClear();
-     }
-@@ -399,6 +566,15 @@ gzFile compat_gzopen(const char* path, const char* mode)
+@@ -399,6 +583,15 @@ gzFile compat_gzopen(const char* path, const char* mode)
  
      char nativePath[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativePath, path);
@@ -269,7 +286,7 @@ index a9a6c10d..0ff6f4e3 100644
      gzFile stream = gzopen(nativePath, mode);
      if (mayWrite && stream != nullptr) {
          compatDirectoryEntryCacheClear();
-@@ -442,6 +618,15 @@ int compat_remove(const char* path)
+@@ -442,6 +635,15 @@ int compat_remove(const char* path)
  
      char nativePath[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativePath, path);
@@ -285,7 +302,7 @@ index a9a6c10d..0ff6f4e3 100644
      int rc = remove(nativePath);
      if (rc == 0) {
          compatDirectoryEntryCacheClear();
-@@ -459,6 +644,14 @@ int compat_rename(const char* oldFileName, const char* newFileName)
+@@ -459,6 +661,14 @@ int compat_rename(const char* oldFileName, const char* newFileName)
      char nativeNewFileName[COMPAT_MAX_PATH];
      compat_prepare_native_path(nativeNewFileName, newFileName);
  

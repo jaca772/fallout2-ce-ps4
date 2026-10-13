@@ -53,11 +53,17 @@ static bool s_isExecutingAction = false;
 // Until this tick the aim list is pruned every frame instead of every ~120 ms.
 static uint32_t s_aimFastPruneUntil = 0;
 
+// Set by ps4GamepadClearPendingActions(): the frozen aim list may reference a
+// target that a queued action just destroyed/moved, so force ps4GamepadPoll to
+// drop the frozen set on its next pass.
+static bool s_aimForceReset = false;
+
 void ps4GamepadClearPendingActions()
 {
     s_actionQueueHead = 0;
     s_actionQueueTail = 0;
     s_actionQueueCount = 0;
+    s_aimForceReset = true;
 }
 
 static bool s_swallowButtonsUntilRelease = false;
@@ -147,7 +153,10 @@ static bool ps4QueuedTargetIsLive(const Ps4GamepadPendingAction& act)
             break;
         }
     }
-    if (len != 0 && list != nullptr) {
+    // objectListFree() already null-checks; when len == 0, list is nullptr
+    // (objectListCreate returns early without allocating), so the len check here
+    // is redundant.
+    if (list != nullptr) {
         objectListFree(list);
     }
     return found;
@@ -159,17 +168,16 @@ void ps4GamepadProcessPendingActions()
         return;
     }
 
-    if (gDude == nullptr) {
-        ps4GamepadClearPendingActions();
-        return;
-    }
-
-    if ((gDude->data.critter.combat.results & (DAM_DEAD | DAM_KNOCKED_OUT)) != 0) {
-        ps4GamepadClearPendingActions();
-        return;
-    }
-
     while (s_actionQueueCount > 0) {
+        // Re-check every iteration: a queued action can kill the player or change
+        // game state, so the remaining queued actions must not run against stale
+        // state. (These checks used to sit before the loop, applying only once.)
+        if (gDude == nullptr
+            || (gDude->data.critter.combat.results & (DAM_DEAD | DAM_KNOCKED_OUT)) != 0) {
+            ps4GamepadClearPendingActions();
+            return;
+        }
+
         Ps4GamepadPendingAction act = s_actionQueue[s_actionQueueHead];
         s_actionQueueHead = (s_actionQueueHead + 1) % PS4_ACTION_QUEUE_CAPACITY;
         s_actionQueueCount--;
@@ -732,7 +740,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
             bool dpUp   = SDL_GameControllerGetButton(g_gamepad, SDL_CONTROLLER_BUTTON_DPAD_UP)   != 0;
             bool dpDown = SDL_GameControllerGetButton(g_gamepad, SDL_CONTROLLER_BUTTON_DPAD_DOWN) != 0;
             if (dpUp || dpDown) {
-                if ((int)(currentTicks - g_lastDpadTicks) > g_ps4Controls.dpadRepeatMs) {
+                if (g_lastDpadTicks == 0 || (currentTicks - g_lastDpadTicks) > static_cast<uint32_t>(g_ps4Controls.dpadRepeatMs)) {
                     const float step = 14.0f; // clears the modal's 10px threshold
                     g_virtualMouseY += dpUp ? -step : step;
                     ps4ClampVirtualCursor();
@@ -750,7 +758,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
             bool dpLeft  = SDL_GameControllerGetButton(g_gamepad, SDL_CONTROLLER_BUTTON_DPAD_LEFT)  != 0;
             bool dpRight = SDL_GameControllerGetButton(g_gamepad, SDL_CONTROLLER_BUTTON_DPAD_RIGHT) != 0;
             if (dpUp || dpDown || dpLeft || dpRight) {
-                if ((int)(currentTicks - g_lastDpadTicks) > g_ps4Controls.dpadRepeatMs) {
+                if (g_lastDpadTicks == 0 || (currentTicks - g_lastDpadTicks) > static_cast<uint32_t>(g_ps4Controls.dpadRepeatMs)) {
                     if (dpUp)    enqueueInputEvent(KEY_ARROW_UP);
                     if (dpDown)  enqueueInputEvent(KEY_ARROW_DOWN);
                     if (dpLeft)  enqueueInputEvent(KEY_ARROW_LEFT);
@@ -791,6 +799,23 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         // per target (on change) instead of every frame. Cleared when combat aim is
         // off, so re-engaging L2 reprints.
         static Object* s_apMsgTarget = nullptr;
+
+        // When the elevation or map changes (elevator, map transition, game load),
+        // the frozen aim list can hold stale Object* pointers for up to one prune
+        // interval (~120 ms). Force an immediate re-engage on the next pass. The
+        // force flag is also set by ps4GamepadClearPendingActions() (queued-action
+        // teardown), which can invalidate the frozen set the same way.
+        static int s_aimLastElevation = -1;
+        static int s_aimLastMapSid = -1;
+        if (s_aimForceReset || gElevation != s_aimLastElevation || gMapSid != s_aimLastMapSid) {
+            s_aimEngaged = false;
+            s_aimSelected = nullptr;
+            s_apMsgTarget = nullptr;
+            s_aimForceReset = false;
+            s_aimLastElevation = gElevation;
+            s_aimLastMapSid = gMapSid;
+        }
+
         GameMouseMode desiredMouseMode;
         if (actionMenu) {
             desiredMouseMode = GAME_MOUSE_MODE_INVALID; // don't touch the cursor the modal manages
@@ -1191,7 +1216,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
             // On release: a short, low-movement touch is a tap -> left click. Hold
             // the synthetic click for a few polls so the engine sees a down->up.
             if (s_prevFinger && !fingerDown) {
-                if ((int)(currentTicks - s_tapStart) < g_ps4Controls.touchTapMs && s_tapMoveAccum < g_ps4Controls.touchTapMove) {
+                if ((currentTicks - s_tapStart) < static_cast<uint32_t>(g_ps4Controls.touchTapMs) && s_tapMoveAccum < g_ps4Controls.touchTapMove) {
                     g_touchpadClickFrames = 3;
                 }
             }

@@ -546,8 +546,10 @@ static std::string ps4RunBootMenu(const std::vector<Ps4GameEntry>& entries, int 
         prevConfirm = confirmRaw;
 
         if (cancelRaw && !prevCancel) {
-            ps4Log("[ps4] boot menu cancelled with Circle (using default)\n");
-            selectedIndex = 0;
+            ps4Log("[ps4] boot menu cancelled with Circle (keeping last active game)\n");
+            // Keep the previously active game (f2_active_game.txt) rather than
+            // clobbering it back to the first entry.
+            selectedIndex = (initialIndex >= 0 && initialIndex < (int)entries.size()) ? initialIndex : 0;
             running = false;
             break;
         }
