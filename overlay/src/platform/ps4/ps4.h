@@ -133,9 +133,43 @@ struct Ps4ControlsConfig {
 
 extern Ps4ControlsConfig g_ps4Controls;
 
+// Display + QoL state read from (and written back to) the selected game folder's
+// fallout2.cfg by the boot menu's RobCo Configuration Terminal. Only the options
+// exposed in ps4RunSettingsMenu are represented here; the full recommended PS4 QoL
+// set lives in ps4.cc (ps4WriteFallout2CfgState with applyAllRecommendedQol=true).
+struct Ps4Fallout2CfgState {
+    int resX = 960;
+    int resY = 540;
+    int scale = 1;
+    int autoOpenDoors = 1;
+    int partyLootAndBarter = 1;
+    int inventoryColumns = 2;
+    int expandBarterAndAp = 1;
+    int running = 1;
+    int subtitles = 1;
+};
+
 // Loads g_ps4Controls from /data/fallout2/ps4_controls.cfg (writing a commented
 // default template if the file doesn't exist yet). Must run after ps4MountData().
 void ps4ReadControlsConfig();
+
+// Writes the current g_ps4Controls to <ps4GetDataPath()>/ps4_controls.cfg.
+void ps4SaveControlsConfig();
+
+// Reads the display + QoL options used by the boot menu settings terminal from
+// <ps4GetDataPath()>/fallout2.cfg (resolution falls back to f2_res.ini).
+void ps4ReadFallout2CfgState(Ps4Fallout2CfgState* outState);
+
+// Non-destructively updates [screen]/[qol]/[ui]/[preferences]/[combat_ai] in
+// <ps4GetDataPath()>/fallout2.cfg. When applyAllRecommendedQol is true, forces the
+// full recommended PS4 QoL set (boot_menu_update.md section 2.2) in addition to
+// the values carried in [state].
+bool ps4WriteFallout2CfgState(const Ps4Fallout2CfgState& state, bool applyAllRecommendedQol);
+
+// Creates ps4_controls.cfg and fallout2.cfg for [folderPath] if this is its first
+// PS4 launch (missing ps4_controls.cfg or fallout2.cfg). Sets ps4SetDataPath
+// internally. Non-destructive to an existing fallout2.cfg.
+void ps4EnsureGameConfigsInitialized(const char* folderPath);
 
 // Escapes the sandbox via libjbc credential jailbreak (prison0) and chdir's to
 // the selected game folder. Must run AFTER SDL_Init but before the engine reads

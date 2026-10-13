@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string>
+#include <vector>
 #include <unistd.h>
 
 #include <SDL.h>
@@ -308,9 +310,9 @@ void ps4Log(const char* fmt, ...)
 // into a 640x480 surface -> clipped loading screen, 4:3 menu/game. Reading the
 // config here lets the bootstrap create the window at the right size. Must run
 // after ps4MountData (cwd = /data/fallout2). Defaults 640x480 / scale 1.
-void ps4ReadDisplayConfig(int* outWidth, int* outHeight, int* outScale)
+static void ps4ReadResolutionConfig(int* outWidth, int* outHeight, int* outScale, int defaultW, int defaultH, int defaultScale)
 {
-    int resX = 640, resY = 480, scale = 1;
+    int resX = defaultW, resY = defaultH, scale = defaultScale;
     bool hasScreenSection = false;
     char cfgPath[512];
     snprintf(cfgPath, sizeof(cfgPath), "%s/fallout2.cfg", ps4GetDataPath());
@@ -379,6 +381,11 @@ void ps4ReadDisplayConfig(int* outWidth, int* outHeight, int* outScale)
     *outHeight = resY;
     *outScale = scale;
     ps4Log("[ps4] display config: %dx%d scale=%d\n", resX, resY, scale);
+}
+
+void ps4ReadDisplayConfig(int* outWidth, int* outHeight, int* outScale)
+{
+    ps4ReadResolutionConfig(outWidth, outHeight, outScale, 640, 480, 1);
 }
 
 // User-tunable gamepad settings with sensible defaults (see Ps4ControlsConfig
@@ -792,6 +799,262 @@ void ps4ReadControlsConfig()
         g_ps4Controls.touchSensitivity, g_ps4Controls.cursorSpeed, g_ps4Controls.cursorSpeedBoost,
         g_ps4Controls.stickDeadzone, g_ps4Controls.stickCurve, ps4ScaleModeName(g_ps4Controls.scaleMode),
         g_ps4Controls.cameraDeadzoneX, g_ps4Controls.cameraDeadzoneY);
+}
+
+// --- Config management API (boot menu / RobCo Configuration Terminal) ---
+
+void ps4SaveControlsConfig()
+{
+    char path[512];
+    snprintf(path, sizeof(path), "%s/ps4_controls.cfg", ps4GetDataPath());
+    ps4WriteDefaultControlsConfig(path);
+}
+
+// Reads an integer key from [section] in a simple INI file. Section and key are
+// matched case-insensitively; the key allows optional surrounding spaces. Returns
+// [defaultValue] when the file, section, or key is absent.
+static int ps4ReadIniInt(const char* path, const char* section, const char* key, int defaultValue)
+{
+    FILE* f = fopen(path, "r");
+    if (f == nullptr) {
+        return defaultValue;
+    }
+
+    bool inSection = false;
+    char line[512];
+    char keyEq[128];
+    snprintf(keyEq, sizeof(keyEq), "%s=", key);
+
+    while (fgets(line, sizeof(line), f) != nullptr) {
+        char* p = line;
+        while (*p == ' ' || *p == '\t') p++;
+
+        if (*p == '[') {
+            char* close = strchr(p, ']');
+            if (close != nullptr) {
+                *close = '\0';
+                inSection = (SDL_strcasecmp(p + 1, section) == 0);
+            }
+            continue;
+        }
+
+        if (!inSection || *p == '\0' || *p == '#' || *p == ';') {
+            continue;
+        }
+
+        if (SDL_strncasecmp(p, keyEq, strlen(keyEq)) == 0) {
+            fclose(f);
+            return atoi(p + strlen(keyEq));
+        }
+    }
+
+    fclose(f);
+    return defaultValue;
+}
+
+void ps4ReadFallout2CfgState(Ps4Fallout2CfgState* outState)
+{
+    if (outState == nullptr) {
+        return;
+    }
+
+    ps4ReadResolutionConfig(&outState->resX, &outState->resY, &outState->scale, 960, 540, 1);
+
+    char cfgPath[512];
+    snprintf(cfgPath, sizeof(cfgPath), "%s/fallout2.cfg", ps4GetDataPath());
+
+    outState->autoOpenDoors = ps4ReadIniInt(cfgPath, "qol", "auto_open_doors", 1);
+    outState->partyLootAndBarter = ps4ReadIniInt(cfgPath, "qol", "party_loot_and_barter", 1);
+    outState->inventoryColumns = ps4ReadIniInt(cfgPath, "ui", "inventory_columns", 2);
+    outState->expandBarterAndAp = ps4ReadIniInt(cfgPath, "ui", "expand_barter_window", 1);
+    outState->running = ps4ReadIniInt(cfgPath, "preferences", "running", 1);
+    outState->subtitles = ps4ReadIniInt(cfgPath, "preferences", "subtitles", 1);
+}
+
+// Non-destructive INI key setter. Searches [section] (case-insensitive): replaces
+// an existing `key=value` line, appends it to the end of the section when the key
+// is missing, or appends a new section + key at the end of the file when the
+// section does not exist. Every other line is preserved, so mod-specific sections
+// (e.g. [system]/[sound]) stay intact.
+static void setIniInt(std::vector<std::string>& lines, const char* section, const char* key, int value)
+{
+    const std::string sectionHeader = std::string("[") + section + "]";
+    const std::string keyEq = std::string(key) + "=";
+
+    size_t sectionStart = std::string::npos;
+    size_t sectionEnd = std::string::npos;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        size_t first = lines[i].find_first_not_of(" \t");
+        if (first == std::string::npos || lines[i][first] != '[') {
+            continue;
+        }
+        size_t close = lines[i].find(']', first);
+        if (close == std::string::npos) {
+            continue;
+        }
+        if (SDL_strcasecmp(lines[i].substr(first + 1, close - first - 1).c_str(), section) == 0) {
+            sectionStart = i;
+            for (size_t j = i + 1; j < lines.size(); ++j) {
+                size_t f2 = lines[j].find_first_not_of(" \t");
+                if (f2 != std::string::npos && lines[j][f2] == '[') {
+                    sectionEnd = j;
+                    break;
+                }
+            }
+            if (sectionEnd == std::string::npos) {
+                sectionEnd = lines.size();
+            }
+            break;
+        }
+    }
+
+    char newLine[64];
+    snprintf(newLine, sizeof(newLine), "%s=%d", key, value);
+
+    if (sectionStart == std::string::npos) {
+        if (!lines.empty() && !lines.back().empty()) {
+            lines.push_back("");
+        }
+        lines.push_back(sectionHeader);
+        lines.push_back(newLine);
+        return;
+    }
+
+    for (size_t i = sectionStart + 1; i < sectionEnd; ++i) {
+        size_t first = lines[i].find_first_not_of(" \t");
+        if (first == std::string::npos) {
+            continue;
+        }
+        const char* trimmed = lines[i].c_str() + first;
+        if (SDL_strncasecmp(trimmed, keyEq.c_str(), keyEq.size()) == 0) {
+            lines[i] = newLine;
+            return;
+        }
+    }
+
+    lines.insert(lines.begin() + sectionEnd, newLine);
+}
+
+bool ps4WriteFallout2CfgState(const Ps4Fallout2CfgState& state, bool applyAllRecommendedQol)
+{
+    char cfgPath[512];
+    snprintf(cfgPath, sizeof(cfgPath), "%s/fallout2.cfg", ps4GetDataPath());
+
+    std::vector<std::string> lines;
+    FILE* f = fopen(cfgPath, "r");
+    if (f != nullptr) {
+        char line[512];
+        while (fgets(line, sizeof(line), f) != nullptr) {
+            size_t len = strlen(line);
+            while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
+                line[--len] = '\0';
+            }
+            lines.push_back(line);
+        }
+        fclose(f);
+    }
+
+    // [screen] always comes from the state, preserving a custom/user resolution.
+    setIniInt(lines, "screen", "resolution_x", state.resX);
+    setIniInt(lines, "screen", "resolution_y", state.resY);
+    setIniInt(lines, "screen", "scale", state.scale);
+    setIniInt(lines, "screen", "windowed", 0);
+
+    // QoL toggles exposed in the settings menu.
+    setIniInt(lines, "qol", "auto_open_doors", state.autoOpenDoors);
+    setIniInt(lines, "qol", "party_loot_and_barter", state.partyLootAndBarter);
+    setIniInt(lines, "ui", "inventory_columns", state.inventoryColumns);
+    setIniInt(lines, "ui", "loot_weight_indicator", state.inventoryColumns >= 2 ? 2 : 1);
+    setIniInt(lines, "ui", "expand_barter_window", state.expandBarterAndAp);
+    setIniInt(lines, "ui", "extend_ap_bar", state.expandBarterAndAp);
+    // "Always Run & Fast Combat" is one toggle: running=1 also enables the faster
+    // player/NPC combat animation settings.
+    setIniInt(lines, "preferences", "running", state.running);
+    setIniInt(lines, "preferences", "player_speedup", state.running);
+    setIniInt(lines, "preferences", "combat_speed", state.running ? 50 : 0);
+    setIniInt(lines, "preferences", "subtitles", state.subtitles);
+
+    if (applyAllRecommendedQol) {
+        // Full recommended PS4 QoL profile (boot_menu_update.md section 2.2).
+        setIniInt(lines, "qol", "use_walk_distance", 3);
+        setIniInt(lines, "qol", "walk_when_sneaking", 0);
+        setIniInt(lines, "qol", "party_trade_from_menu", 1);
+        setIniInt(lines, "qol", "fast_ammo_load", 1);
+        setIniInt(lines, "ui", "main_menu_scale_mode", 2);
+        setIniInt(lines, "ui", "main_menu_overlay_subscreens", 1);
+        setIniInt(lines, "ui", "iface_bar_width", 800);
+        setIniInt(lines, "ui", "iface_bar_side_art", 2);
+        setIniInt(lines, "ui", "perks_progress_bar", 1);
+        setIniInt(lines, "ui", "alternate_ammo_meter", 2);
+        setIniInt(lines, "ui", "splash_screen_size", 1);
+        setIniInt(lines, "ui", "death_screen_size", 1);
+        setIniInt(lines, "ui", "end_slide_size", 1);
+        setIniInt(lines, "ui", "movie_aspect_fit", 1);
+        setIniInt(lines, "ui", "edg_support", 1);
+        setIniInt(lines, "ui", "display_karma_changes", 1);
+        setIniInt(lines, "ui", "display_bonus_damage", 1);
+        setIniInt(lines, "ui", "numbers_in_dialogue", 1);
+        setIniInt(lines, "ui", "party_member_extra_info", 1);
+        setIniInt(lines, "ui", "dialog_border", 1);
+        setIniInt(lines, "ui", "auto_quick_save", 5);
+        setIniInt(lines, "ui", "enable_high_resolution_stencil", 1);
+        setIniInt(lines, "ui", "loot_container_size_indicator_threshold", 50);
+        setIniInt(lines, "preferences", "target_highlight", 2);
+        setIniInt(lines, "preferences", "item_highlight", 1);
+        setIniInt(lines, "preferences", "combat_messages", 1);
+        setIniInt(lines, "preferences", "combat_taunts", 1);
+        setIniInt(lines, "combat_ai", "npcs_try_to_spend_extra_ap", 2);
+    }
+
+    f = fopen(cfgPath, "w");
+    if (f == nullptr) {
+        ps4Log("[ps4] ps4WriteFallout2CfgState: fopen(%s) failed errno=%d\n", cfgPath, errno);
+        return false;
+    }
+    for (const std::string& l : lines) {
+        fprintf(f, "%s\n", l.c_str());
+    }
+    fflush(f);
+    fclose(f);
+    ps4Log("[ps4] wrote fallout2.cfg (%zu lines, recommended=%d)\n", lines.size(), applyAllRecommendedQol ? 1 : 0);
+    return true;
+}
+
+void ps4EnsureGameConfigsInitialized(const char* folderPath)
+{
+    if (folderPath == nullptr || folderPath[0] == '\0') {
+        return;
+    }
+
+    ps4SetDataPath(folderPath);
+
+    char controlsPath[512];
+    snprintf(controlsPath, sizeof(controlsPath), "%s/ps4_controls.cfg", folderPath);
+    bool hasControls = (access(controlsPath, F_OK) == 0);
+
+    char cfgPath[512];
+    snprintf(cfgPath, sizeof(cfgPath), "%s/fallout2.cfg", folderPath);
+    bool hasCfg = (access(cfgPath, F_OK) == 0);
+
+    if (!hasControls) {
+        // First PS4 launch for this folder: start from the PS4 control defaults.
+        g_ps4Controls = Ps4ControlsConfig();
+        ps4SaveControlsConfig();
+    }
+
+    if (!hasCfg) {
+        // No fallout2.cfg: create it with the full recommended PS4 QoL profile.
+        Ps4Fallout2CfgState state;
+        ps4WriteFallout2CfgState(state, true);
+    } else if (!hasControls) {
+        // An existing fallout2.cfg (copied from PC), first PS4 launch: inject the
+        // [screen] + QoL keys non-destructively, keeping mod-specific sections.
+        Ps4Fallout2CfgState state;
+        ps4ReadFallout2CfgState(&state);
+        ps4WriteFallout2CfgState(state, true);
+    }
+
+    ps4Log("[ps4] ensure configs for %s (controls=%d cfg=%d)\n", folderPath, hasControls ? 1 : 0, hasCfg ? 1 : 0);
 }
 
 // Makes the console's game data (PS4_DATA_PATH = /data/fallout2) reachable and

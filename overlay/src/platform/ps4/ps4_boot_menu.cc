@@ -74,6 +74,31 @@ static void drawString(SDL_Surface* s, int x, int y, const char* str, uint32_t f
     }
 }
 
+// drawString with a right-edge guard: stops drawing a line once the next character
+// would cross x + maxW. Used for long game titles/paths/values so they never spill
+// past the TV safe area.
+static void drawStringMaxW(SDL_Surface* s, int x, int y, int maxW, const char* str, uint32_t fg, uint32_t bg, int scale)
+{
+    int curX = x;
+    int curY = y;
+    int charW = 8 * scale;
+    int charH = 8 * scale;
+    int limit = x + maxW;
+    while (*str != '\0') {
+        if (*str == '\n') {
+            curX = x;
+            curY += charH + 4;
+        } else {
+            if (curX + charW > limit) {
+                break;
+            }
+            drawChar(s, curX, curY, (unsigned char)*str, fg, bg, scale);
+            curX += charW;
+        }
+        str++;
+    }
+}
+
 static void fillRect(SDL_Surface* s, int x, int y, int w, int h, uint32_t color)
 {
     uint32_t* pixels = static_cast<uint32_t*>(s->pixels);
@@ -133,25 +158,37 @@ static int ps4GetPadHandle()
 }
 
 static void ps4ReadInputState(SDL_GameController* controller, int padHandle,
-                              bool* outUp, bool* outDown, bool* outConfirm, bool* outCancel, bool* outMenu)
+                              bool* outUp, bool* outDown, bool* outLeft, bool* outRight,
+                              bool* outConfirm, bool* outCancel, bool* outMenu,
+                              bool* outSquare, bool* outTriangle)
 {
     SDL_PumpEvents();
 
     bool up = false;
     bool down = false;
+    bool left = false;
+    bool right = false;
     bool confirm = false;
     bool cancel = false;
     bool menu = false;
+    bool square = false;
+    bool triangle = false;
 
     if (controller != nullptr) {
         if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_UP) != 0) up = true;
         if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN) != 0) down = true;
+        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT) != 0) left = true;
+        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT) != 0) right = true;
         if (SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY) < -14000) up = true;
         if (SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY) > 14000) down = true;
+        if (SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX) < -14000) left = true;
+        if (SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX) > 14000) right = true;
 
         if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_A) != 0) confirm = true; // Cross
         if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_START) != 0) confirm = true; // Options
         if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_B) != 0) cancel = true; // Circle
+        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_X) != 0) square = true; // Square
+        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_Y) != 0) triangle = true; // Triangle
 
         if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_LEFTSHOULDER) != 0) menu = true; // L1
         if (SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 8000) menu = true; // L2
@@ -162,8 +199,12 @@ static void ps4ReadInputState(SDL_GameController* controller, int padHandle,
         if (scePadReadState(padHandle, &pd) == 0) {
             if (pd.buttons & ORBIS_PAD_BUTTON_UP) up = true;
             if (pd.buttons & ORBIS_PAD_BUTTON_DOWN) down = true;
+            if (pd.buttons & ORBIS_PAD_BUTTON_LEFT) left = true;
+            if (pd.buttons & ORBIS_PAD_BUTTON_RIGHT) right = true;
             if (pd.buttons & (ORBIS_PAD_BUTTON_CROSS | ORBIS_PAD_BUTTON_OPTIONS)) confirm = true;
             if (pd.buttons & ORBIS_PAD_BUTTON_CIRCLE) cancel = true;
+            if (pd.buttons & ORBIS_PAD_BUTTON_SQUARE) square = true;
+            if (pd.buttons & ORBIS_PAD_BUTTON_TRIANGLE) triangle = true;
 
             if (pd.buttons & (ORBIS_PAD_BUTTON_L1 | ORBIS_PAD_BUTTON_L2)) {
                 menu = true;
@@ -173,9 +214,13 @@ static void ps4ReadInputState(SDL_GameController* controller, int padHandle,
 
     if (outUp) *outUp = up;
     if (outDown) *outDown = down;
+    if (outLeft) *outLeft = left;
+    if (outRight) *outRight = right;
     if (outConfirm) *outConfirm = confirm;
     if (outCancel) *outCancel = cancel;
     if (outMenu) *outMenu = menu;
+    if (outSquare) *outSquare = square;
+    if (outTriangle) *outTriangle = triangle;
 }
 
 // --- Folder scanner & metadata ---
@@ -347,8 +392,8 @@ static void ps4ShowNoDataError()
     int padHandle = ps4GetPadHandle();
 
     while (true) {
-        bool up = false, down = false, confirm = false, cancel = false, menu = false;
-        ps4ReadInputState(controller, padHandle, &up, &down, &confirm, &cancel, &menu);
+        bool confirm = false, cancel = false;
+        ps4ReadInputState(controller, padHandle, nullptr, nullptr, nullptr, nullptr, &confirm, &cancel, nullptr, nullptr, nullptr);
         if (confirm || cancel) {
             ps4Log("[ps4] user requested exit from no-data error screen\n");
             if (controller != nullptr) {
@@ -362,29 +407,30 @@ static void ps4ShowNoDataError()
     }
 }
 
-// 2.5-second countdown prompt screen showing the active game with visual progress bar
-static bool ps4ShowBootCountdown(const std::string& activeTitle, SDL_GameController* controller, int padHandle)
+// 2.5-second countdown prompt screen showing the active game with visual progress
+// bar. Returns 0 = launch now, 1 = open boot menu, 2 = open settings.
+static int ps4ShowBootCountdown(const std::string& activeTitle, SDL_GameController* controller, int padHandle)
 {
     ps4Log("[ps4] showing boot countdown for '%s'\n", activeTitle.c_str());
     if (!ps4VideoInit(1280, 720)) {
-        return false;
+        return 0;
     }
 
     SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, 1280, 720, 32, SDL_PIXELFORMAT_RGB888);
     if (surface == nullptr) {
         ps4VideoShutdown();
-        return false;
+        return 0;
     }
 
-    bool openMenu = false;
+    int result = 0;
     const uint32_t totalMs = 2500;
     uint32_t startTicks = SDL_GetTicks();
 
     // Check if Confirm was already held at start (e.g. from launching in XMB)
     bool initialConfirm = false;
     {
-        bool u, d, c, ca, m;
-        ps4ReadInputState(controller, padHandle, &u, &d, &c, &ca, &m);
+        bool u, d, l, r, c, ca, m, sq, tr;
+        ps4ReadInputState(controller, padHandle, &u, &d, &l, &r, &c, &ca, &m, &sq, &tr);
         initialConfirm = c;
     }
 
@@ -395,19 +441,27 @@ static bool ps4ShowBootCountdown(const std::string& activeTitle, SDL_GameControl
             break;
         }
 
-        bool up = false, down = false, confirm = false, cancel = false, menu = false;
-        ps4ReadInputState(controller, padHandle, &up, &down, &confirm, &cancel, &menu);
+        bool up = false, down = false, left = false, right = false;
+        bool confirm = false, cancel = false, menu = false, square = false, triangle = false;
+        ps4ReadInputState(controller, padHandle, &up, &down, &left, &right,
+                          &confirm, &cancel, &menu, &square, &triangle);
 
         if (menu) {
             ps4Log("[ps4] boot countdown: L1/L2 pressed -> opening Boot Menu!\n");
-            openMenu = true;
+            result = 1;
+            break;
+        }
+
+        if (square) {
+            ps4Log("[ps4] boot countdown: Square pressed -> opening Settings!\n");
+            result = 2;
             break;
         }
 
         if (confirm) {
             if (!initialConfirm) {
                 ps4Log("[ps4] boot countdown: Cross pressed -> launching immediately\n");
-                openMenu = false;
+                result = 0;
                 break;
             }
         } else {
@@ -419,19 +473,19 @@ static bool ps4ShowBootCountdown(const std::string& activeTitle, SDL_GameControl
         fillRect(surface, 0, 0, 1280, 720, 0x00060d07);
 
         // Header
-        fillRect(surface, 40, 40, 1200, 68, 0x000f2312);
-        drawString(surface, 56, 54, "ROBCO INDUSTRIES (TM) TERMLINK PROTOCOL - BOOT LOADER", 0x0018ff62, 0, 2);
-        drawString(surface, 56, 82, "FALLOUT 2 COMMUNITY EDITION - PLAYSTATION 4 PORT", 0x000d8c36, 0, 1);
+        fillRect(surface, 60, 36, 1160, 68, 0x000f2312);
+        drawString(surface, 72, 50, "ROBCO INDUSTRIES (TM) TERMLINK PROTOCOL - BOOT LOADER", 0x0018ff62, 0, 2);
+        drawString(surface, 72, 76, "FALLOUT 2 COMMUNITY EDITION - PLAYSTATION 4 PORT", 0x000d8c36, 0, 1);
 
         // Active Game Banner
-        fillRect(surface, 40, 160, 1200, 100, 0x00142818);
-        drawString(surface, 60, 180, "ACTIVE GAME:", 0x0033ff77, 0, 2);
-        drawString(surface, 60, 215, activeTitle.c_str(), 0x0018ff62, 0, 3);
+        fillRect(surface, 60, 160, 1160, 100, 0x00142818);
+        drawString(surface, 72, 180, "ACTIVE GAME:", 0x0033ff77, 0, 2);
+        drawStringMaxW(surface, 72, 215, 1100, activeTitle.c_str(), 0x0018ff62, 0, 3);
 
         // Countdown display
         char cdBuf[128];
         snprintf(cdBuf, sizeof(cdBuf), "Starting in %d second%s...", remainingSeconds, remainingSeconds == 1 ? "" : "s");
-        drawString(surface, 60, 310, cdBuf, 0x0018ff62, 0, 2);
+        drawString(surface, 72, 310, cdBuf, 0x0018ff62, 0, 2);
 
         // Progress bar
         int barW = 1160;
@@ -441,15 +495,16 @@ static bool ps4ShowBootCountdown(const std::string& activeTitle, SDL_GameControl
             fillRect(surface, 60, 350, filledW, 16, 0x0018ff62);
         }
 
-        // Action instructions box
-        fillRect(surface, 40, 430, 1200, 190, 0x000c1c0e);
-        drawString(surface, 60, 455, "CONTROLLER ACTIONS:", 0x0033ff77, 0, 2);
-        drawString(surface, 80, 500, "[L1 / L2]   OPEN BOOT MENU (Select a different game / mod)", 0x0018ff62, 0, 2);
-        drawString(surface, 80, 545, "[CROSS / X] LAUNCH NOW", 0x000d8c36, 0, 2);
+        // Action instructions box (3 rows)
+        fillRect(surface, 60, 430, 1160, 140, 0x000c1c0e);
+        drawString(surface, 72, 452, "CONTROLLER ACTIONS:", 0x0033ff77, 0, 2);
+        drawString(surface, 80, 486, "[L1 / L2]    OPEN BOOT MENU (Switch Game / Mod)", 0x0018ff62, 0, 2);
+        drawString(surface, 80, 516, "[SQUARE]     OPEN SETTINGS (Resolution / Controls / QoL)", 0x0018ff62, 0, 2);
+        drawString(surface, 80, 546, "[CROSS / X]  LAUNCH NOW", 0x000d8c36, 0, 2);
 
         // Footer divider
-        fillRect(surface, 40, 650, 1200, 2, 0x0018ff62);
-        drawString(surface, 60, 665, "Hint: Press L1 or L2 now to switch between Fallout 2, Sonora, Nevada, etc.", 0x000d8c36, 0, 1);
+        fillRect(surface, 60, 580, 1160, 2, 0x0018ff62);
+        drawString(surface, 60, 660, "Hint: Press L1 or L2 now to switch between Fallout 2, Sonora, Nevada, etc.", 0x000d8c36, 0, 1);
 
         applyScanlines(surface);
         ps4VideoPresent(surface);
@@ -460,7 +515,343 @@ static bool ps4ShowBootCountdown(const std::string& activeTitle, SDL_GameControl
     SDL_FreeSurface(surface);
     // Keep sceVideoOut and direct memory buffer alive to reuse across menu and game engine.
 
-    return openMenu;
+    return result;
+}
+
+// --- Resolution presets (RobCo Configuration Terminal) ---
+
+struct Ps4ResolutionPreset {
+    const char* label;
+    int width;
+    int height;
+    int scale;
+};
+
+static const Ps4ResolutionPreset kPs4ResolutionPresets[] = {
+    { "960x540 (TV Balanced)",   960, 540, 1 },
+    { "854x480 (TV Large UI)",   854, 480, 1 },
+    { "1280x720 (HD 2x Big UI)", 1280, 720, 2 },
+    { "1066x600 (TV Medium)",    1066, 600, 1 },
+    { "1280x720 (HD 1x Small)",  1280, 720, 1 },
+    { "640x480 (4:3 Classic)",   640, 480, 1 },
+};
+static const int kPs4ResolutionPresetCount = (int)(sizeof(kPs4ResolutionPresets) / sizeof(kPs4ResolutionPresets[0]));
+
+static int ps4ResolutionPresetIndex(const Ps4Fallout2CfgState& cfg)
+{
+    for (int i = 0; i < kPs4ResolutionPresetCount; ++i) {
+        if (cfg.resX == kPs4ResolutionPresets[i].width
+            && cfg.resY == kPs4ResolutionPresets[i].height
+            && cfg.scale == kPs4ResolutionPresets[i].scale) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static const char* ps4SettingsOptionName(int opt)
+{
+    switch (opt) {
+    case 0: return "Resolution Preset";
+    case 1: return "Display Scaling";
+    case 2: return "Left Stick (World)";
+    case 3: return "Right Stick (World)";
+    case 4: return "Combat Auto-Aim (L2)";
+    case 5: return "World Auto-Aim (L2)";
+    case 6: return "Melee Out-of-Range";
+    case 7: return "Loot Assist (L2+L1)";
+    case 8: return "Cursor Speed";
+    case 9: return "Touchpad Sensitivity";
+    case 10: return "PS4 On-Screen Keyboard";
+    case 11: return "Circle Closes Inv/Loot";
+    case 12: return "[CE QoL] Auto-Open Doors";
+    case 13: return "[CE QoL] Party Loot/Barter";
+    case 14: return "[CE QoL] Inventory Columns";
+    case 15: return "[CE QoL] Always Run + Fast Combat";
+    default: return "";
+    }
+}
+
+static void ps4SettingsOptionValue(int opt, const Ps4Fallout2CfgState& cfg, char* buf, size_t bufSize)
+{
+    switch (opt) {
+    case 0: {
+        int idx = ps4ResolutionPresetIndex(cfg);
+        if (idx < 0) {
+            snprintf(buf, bufSize, "Custom (%dx%d s%d)", cfg.resX, cfg.resY, cfg.scale);
+        } else {
+            snprintf(buf, bufSize, "%s", kPs4ResolutionPresets[idx].label);
+        }
+        break;
+    }
+    case 1:
+        snprintf(buf, bufSize, "%s",
+            g_ps4Controls.scaleMode == PS4_SCALE_FILL ? "Fill 16:9"
+            : g_ps4Controls.scaleMode == PS4_SCALE_INTEGER ? "Integer"
+            : "Letterbox");
+        break;
+    case 2:
+        switch (g_ps4Controls.worldLeftStick) {
+        case PS4_WRS_WALK: snprintf(buf, bufSize, "Walk Character"); break;
+        case PS4_WRS_CURSOR: snprintf(buf, bufSize, "Free Cursor"); break;
+        case PS4_WRS_CAMERA: snprintf(buf, bufSize, "Camera Pan"); break;
+        case PS4_WRS_CENTERED: snprintf(buf, bufSize, "Centered Camera"); break;
+        default: snprintf(buf, bufSize, "Off"); break;
+        }
+        break;
+    case 3:
+        switch (g_ps4Controls.worldRightStick) {
+        case PS4_WRS_CAMERA: snprintf(buf, bufSize, "Camera Pan"); break;
+        case PS4_WRS_CENTERED: snprintf(buf, bufSize, "Centered Camera"); break;
+        case PS4_WRS_CURSOR: snprintf(buf, bufSize, "Free Cursor"); break;
+        default: snprintf(buf, bufSize, "Off"); break;
+        }
+        break;
+    case 4: snprintf(buf, bufSize, "%s", g_ps4Controls.combatAutoAim ? "On" : "Off"); break;
+    case 5: snprintf(buf, bufSize, "%s", g_ps4Controls.worldAutoAim ? "On" : "Off"); break;
+    case 6:
+        snprintf(buf, bufSize, "%s",
+            g_ps4Controls.meleeApproach == PS4_MELEE_OFF ? "Off"
+            : g_ps4Controls.meleeApproach == PS4_MELEE_ATTACK ? "Run Up + Attack"
+            : "Run Up Only");
+        break;
+    case 7: snprintf(buf, bufSize, "%s", g_ps4Controls.lootAssist ? "On" : "Off"); break;
+    case 8: snprintf(buf, bufSize, "%.0f", g_ps4Controls.cursorSpeed); break;
+    case 9: snprintf(buf, bufSize, "%.2f", g_ps4Controls.touchSensitivity); break;
+    case 10: snprintf(buf, bufSize, "%s", g_ps4Controls.imeEnabled ? "On" : "Off"); break;
+    case 11: snprintf(buf, bufSize, "%s", g_ps4Controls.circleCloseAll ? "On (Close All)" : "Off (Keep RMB)"); break;
+    case 12: snprintf(buf, bufSize, "%s", cfg.autoOpenDoors ? "On" : "Off"); break;
+    case 13: snprintf(buf, bufSize, "%s", cfg.partyLootAndBarter ? "On" : "Off"); break;
+    case 14: snprintf(buf, bufSize, "%s", cfg.inventoryColumns >= 2 ? "2 Columns" : "1 Column"); break;
+    case 15: snprintf(buf, bufSize, "%s", cfg.running ? "On" : "Off"); break;
+    default: buf[0] = '\0'; break;
+    }
+}
+
+// dir = -1 (left) or +1 (right).
+static void ps4SettingsOptionAdjust(int opt, int dir, Ps4Fallout2CfgState& cfg)
+{
+    switch (opt) {
+    case 0: {
+        int idx = ps4ResolutionPresetIndex(cfg);
+        int next = (idx < 0) ? (dir > 0 ? 0 : kPs4ResolutionPresetCount - 1)
+                             : (idx + dir + kPs4ResolutionPresetCount) % kPs4ResolutionPresetCount;
+        cfg.resX = kPs4ResolutionPresets[next].width;
+        cfg.resY = kPs4ResolutionPresets[next].height;
+        cfg.scale = kPs4ResolutionPresets[next].scale;
+        break;
+    }
+    case 1: {
+        int v = g_ps4Controls.scaleMode + dir;
+        if (v < 0) v = 2;
+        if (v > 2) v = 0;
+        g_ps4Controls.scaleMode = v;
+        ps4VideoSetScaleMode((Ps4ScaleMode)v);
+        break;
+    }
+    case 2: {
+        static const int roles[] = { PS4_WRS_CENTERED, PS4_WRS_WALK, PS4_WRS_CURSOR, PS4_WRS_CAMERA };
+        int cur = 0;
+        for (int i = 0; i < 4; ++i) if (roles[i] == g_ps4Controls.worldLeftStick) cur = i;
+        cur = (cur + dir + 4) % 4;
+        g_ps4Controls.worldLeftStick = roles[cur];
+        break;
+    }
+    case 3: {
+        static const int roles[] = { PS4_WRS_CURSOR, PS4_WRS_CAMERA, PS4_WRS_CENTERED };
+        int cur = 0;
+        for (int i = 0; i < 3; ++i) if (roles[i] == g_ps4Controls.worldRightStick) cur = i;
+        cur = (cur + dir + 3) % 3;
+        g_ps4Controls.worldRightStick = roles[cur];
+        break;
+    }
+    case 4: g_ps4Controls.combatAutoAim = !g_ps4Controls.combatAutoAim; break;
+    case 5: g_ps4Controls.worldAutoAim = !g_ps4Controls.worldAutoAim; break;
+    case 6: {
+        int v = g_ps4Controls.meleeApproach + dir;
+        if (v < 0) v = 2;
+        if (v > 2) v = 0;
+        g_ps4Controls.meleeApproach = v;
+        break;
+    }
+    case 7: g_ps4Controls.lootAssist = !g_ps4Controls.lootAssist; break;
+    case 8: {
+        float v = g_ps4Controls.cursorSpeed + dir * 50.0f;
+        if (v < 250.0f) v = 250.0f;
+        if (v > 900.0f) v = 900.0f;
+        g_ps4Controls.cursorSpeed = v;
+        g_ps4Controls.cursorSpeedBoost = v * 2.0f;
+        break;
+    }
+    case 9: {
+        float v = g_ps4Controls.touchSensitivity + dir * 0.05f;
+        if (v < 0.10f) v = 0.10f;
+        if (v > 0.60f) v = 0.60f;
+        g_ps4Controls.touchSensitivity = v;
+        break;
+    }
+    case 10: g_ps4Controls.imeEnabled = !g_ps4Controls.imeEnabled; break;
+    case 11: g_ps4Controls.circleCloseAll = !g_ps4Controls.circleCloseAll; break;
+    case 12: cfg.autoOpenDoors = !cfg.autoOpenDoors; break;
+    case 13: cfg.partyLootAndBarter = !cfg.partyLootAndBarter; break;
+    case 14: cfg.inventoryColumns = (cfg.inventoryColumns >= 2) ? 1 : 2; break;
+    case 15: cfg.running = !cfg.running; cfg.expandBarterAndAp = cfg.running; break;
+    default: break;
+    }
+}
+
+// RobCo Configuration Terminal: edits display, controls and CE QoL for one game.
+static void ps4RunSettingsMenu(const Ps4GameEntry& entry, SDL_GameController* controller, int padHandle)
+{
+    ps4Log("[ps4] opening settings menu for '%s'\n", entry.title.c_str());
+
+    // Operate on the selected game folder's configs.
+    ps4SetDataPath(entry.path.c_str());
+    ps4ReadControlsConfig();
+    Ps4Fallout2CfgState cfgState;
+    ps4ReadFallout2CfgState(&cfgState);
+
+    if (!ps4VideoInit(1280, 720)) {
+        return;
+    }
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, 1280, 720, 32, SDL_PIXELFORMAT_RGB888);
+    if (surface == nullptr) {
+        ps4VideoShutdown();
+        return;
+    }
+
+    const int kOptionCount = 16;
+    const int maxVisible = 9;
+    int selected = 0;
+    int scrollOffset = 0;
+
+    bool prevUp = false, prevDown = false, prevLeft = false, prevRight = false;
+    bool prevConfirm = true, prevCancel = true, prevTriangle = true;
+    {
+        bool u, d, l, r, c, ca, m, sq, tr;
+        ps4ReadInputState(controller, padHandle, &u, &d, &l, &r, &c, &ca, &m, &sq, &tr);
+        prevUp = u; prevDown = d; prevLeft = l; prevRight = r;
+        prevConfirm = c; prevCancel = ca; prevTriangle = tr;
+    }
+
+    uint32_t repeatTimer = 0;
+    bool running = true;
+    while (running) {
+        bool upRaw = false, downRaw = false, leftRaw = false, rightRaw = false;
+        bool confirmRaw = false, cancelRaw = false, menuRaw = false;
+        bool squareRaw = false, triangleRaw = false;
+        ps4ReadInputState(controller, padHandle, &upRaw, &downRaw, &leftRaw, &rightRaw,
+                          &confirmRaw, &cancelRaw, &menuRaw, &squareRaw, &triangleRaw);
+
+        bool goUp = upRaw && !prevUp;
+        bool goDown = downRaw && !prevDown;
+        bool goLeft = leftRaw && !prevLeft;
+        bool goRight = rightRaw && !prevRight;
+
+        if (upRaw || downRaw || leftRaw || rightRaw) {
+            repeatTimer++;
+            if (repeatTimer > 18 && (repeatTimer % 6 == 0)) {
+                if (upRaw) goUp = true;
+                if (downRaw) goDown = true;
+                if (leftRaw) goLeft = true;
+                if (rightRaw) goRight = true;
+            }
+        } else {
+            repeatTimer = 0;
+        }
+
+        prevUp = upRaw; prevDown = downRaw; prevLeft = leftRaw; prevRight = rightRaw;
+
+        if (goUp) selected = (selected - 1 + kOptionCount) % kOptionCount;
+        if (goDown) selected = (selected + 1) % kOptionCount;
+        if (goLeft) ps4SettingsOptionAdjust(selected, -1, cfgState);
+        if (goRight) ps4SettingsOptionAdjust(selected, +1, cfgState);
+
+        if (selected < scrollOffset) {
+            scrollOffset = selected;
+        } else if (selected >= scrollOffset + maxVisible) {
+            scrollOffset = selected - maxVisible + 1;
+        }
+
+        if (confirmRaw && !prevConfirm) {
+            ps4SaveControlsConfig();
+            ps4WriteFallout2CfgState(cfgState, false);
+            sync();
+            ps4Log("[ps4] settings saved for %s\n", entry.path.c_str());
+            running = false;
+            break;
+        }
+        prevConfirm = confirmRaw;
+
+        if (triangleRaw && !prevTriangle) {
+            g_ps4Controls = Ps4ControlsConfig();
+            cfgState = Ps4Fallout2CfgState();
+            ps4WriteFallout2CfgState(cfgState, true);
+            ps4VideoSetScaleMode((Ps4ScaleMode)g_ps4Controls.scaleMode);
+            ps4Log("[ps4] settings reset to recommended PS4 defaults\n");
+        }
+        prevTriangle = triangleRaw;
+
+        if (cancelRaw && !prevCancel) {
+            // Discard unsaved RAM changes and return.
+            ps4ReadControlsConfig();
+            ps4Log("[ps4] settings cancelled\n");
+            running = false;
+            break;
+        }
+        prevCancel = cancelRaw;
+
+        fillRect(surface, 0, 0, 1280, 720, 0x00060d07);
+
+        // Header
+        fillRect(surface, 60, 36, 1160, 68, 0x000f2312);
+        drawString(surface, 72, 50, "ROBCO INDUSTRIES (TM) TERMLINK PROTOCOL - CONFIG TERMINAL", 0x0018ff62, 0, 2);
+        char settingsFor[256];
+        snprintf(settingsFor, sizeof(settingsFor), "SETTINGS FOR: %s", entry.title.c_str());
+        drawStringMaxW(surface, 72, 76, 1100, settingsFor, 0x000d8c36, 0, 1);
+
+        // Option list
+        int startY = 150;
+        int itemH = 44;
+        for (int v = 0; v < maxVisible; ++v) {
+            int i = scrollOffset + v;
+            if (i >= kOptionCount) break;
+            int itemY = startY + v * itemH;
+            bool isSel = (i == selected);
+
+            char val[256];
+            ps4SettingsOptionValue(i, cfgState, val, sizeof(val));
+            char valText[280];
+            snprintf(valText, sizeof(valText), "< %s >", val);
+
+            if (isSel) {
+                fillRect(surface, 60, itemY, 1160, 38, 0x0018ff62);
+                drawStringMaxW(surface, 72, itemY + 11, 500, ps4SettingsOptionName(i), 0x00060d07, 0x0018ff62, 2);
+                drawStringMaxW(surface, 640, itemY + 11, 560, valText, 0x00060d07, 0x0018ff62, 2);
+            } else {
+                drawStringMaxW(surface, 72, itemY + 11, 500, ps4SettingsOptionName(i), 0x0018ff62, 0, 2);
+                drawStringMaxW(surface, 640, itemY + 11, 560, valText, 0x000d8c36, 0, 2);
+            }
+        }
+
+        if (scrollOffset > 0) {
+            drawString(surface, 1080, 120, "[^ MORE]", 0x000d8c36, 0, 1);
+        }
+        if (scrollOffset + maxVisible < kOptionCount) {
+            drawString(surface, 1080, 560, "[v MORE]", 0x000d8c36, 0, 1);
+        }
+
+        // Footer
+        fillRect(surface, 60, 580, 1160, 2, 0x0018ff62);
+        drawString(surface, 60, 596, "[U/D] Select   [L/R] Change   [X] Save   [O] Cancel", 0x0018ff62, 0, 2);
+        drawString(surface, 60, 626, "[TRIANGLE] Reset All to Recommended PS4 Defaults", 0x0018ff62, 0, 2);
+
+        applyScanlines(surface);
+        ps4VideoPresent(surface);
+        SDL_Delay(16);
+    }
+
+    SDL_FreeSurface(surface);
 }
 
 // Full interactive RobCo terminal boot menu
@@ -488,13 +879,15 @@ static std::string ps4RunBootMenu(const std::vector<Ps4GameEntry>& entries, int 
     bool prevDown = false;
     bool prevConfirm = true; // initialize true to avoid auto-triggering on enter
     bool prevCancel = true;
+    bool prevSquare = true;
     {
-        bool u, d, c, ca, m;
-        ps4ReadInputState(controller, padHandle, &u, &d, &c, &ca, &m);
+        bool u, d, l, r, c, ca, m, sq, tr;
+        ps4ReadInputState(controller, padHandle, &u, &d, &l, &r, &c, &ca, &m, &sq, &tr);
         prevUp = u;
         prevDown = d;
         prevConfirm = c;
         prevCancel = ca;
+        prevSquare = sq;
     }
     uint32_t repeatTimer = 0;
     bool running = true;
@@ -502,8 +895,11 @@ static std::string ps4RunBootMenu(const std::vector<Ps4GameEntry>& entries, int 
     int scrollOffset = 0;
 
     while (running) {
-        bool upRaw = false, downRaw = false, confirmRaw = false, cancelRaw = false, menuRaw = false;
-        ps4ReadInputState(controller, padHandle, &upRaw, &downRaw, &confirmRaw, &cancelRaw, &menuRaw);
+        bool upRaw = false, downRaw = false, leftRaw = false, rightRaw = false;
+        bool confirmRaw = false, cancelRaw = false, menuRaw = false;
+        bool squareRaw = false, triangleRaw = false;
+        ps4ReadInputState(controller, padHandle, &upRaw, &downRaw, &leftRaw, &rightRaw,
+                          &confirmRaw, &cancelRaw, &menuRaw, &squareRaw, &triangleRaw);
 
         bool goUp = upRaw && !prevUp;
         bool goDown = downRaw && !prevDown;
@@ -530,12 +926,17 @@ static std::string ps4RunBootMenu(const std::vector<Ps4GameEntry>& entries, int 
             ps4Log("[ps4] boot menu: selected -> %d (%s)\n", selectedIndex, entries[selectedIndex].title.c_str());
         }
 
-        // Adjust scroll offset to keep selectedIndex in visible window
         if (selectedIndex < scrollOffset) {
             scrollOffset = selectedIndex;
         } else if (selectedIndex >= scrollOffset + maxVisible) {
             scrollOffset = selectedIndex - maxVisible + 1;
         }
+
+        if (squareRaw && !prevSquare) {
+            ps4Log("[ps4] boot menu: Square -> settings for '%s'\n", entries[selectedIndex].title.c_str());
+            ps4RunSettingsMenu(entries[selectedIndex], controller, padHandle);
+        }
+        prevSquare = squareRaw;
 
         if (confirmRaw && !prevConfirm) {
             ps4Log("[ps4] boot menu confirmed: '%s' (%s)\n", entries[selectedIndex].title.c_str(), entries[selectedIndex].path.c_str());
@@ -547,8 +948,6 @@ static std::string ps4RunBootMenu(const std::vector<Ps4GameEntry>& entries, int 
 
         if (cancelRaw && !prevCancel) {
             ps4Log("[ps4] boot menu cancelled with Circle (keeping last active game)\n");
-            // Keep the previously active game (f2_active_game.txt) rather than
-            // clobbering it back to the first entry.
             selectedIndex = (initialIndex >= 0 && initialIndex < (int)entries.size()) ? initialIndex : 0;
             running = false;
             break;
@@ -558,9 +957,9 @@ static std::string ps4RunBootMenu(const std::vector<Ps4GameEntry>& entries, int 
         fillRect(surface, 0, 0, 1280, 720, 0x00060d07);
 
         // Header
-        fillRect(surface, 40, 30, 1200, 68, 0x000f2312);
-        drawString(surface, 56, 44, "ROBCO INDUSTRIES (TM) TERMLINK PROTOCOL - BOOT SELECTOR", 0x0018ff62, 0, 2);
-        drawString(surface, 56, 72, "FALLOUT 2 COMMUNITY EDITION - PLAYSTATION 4 PORT", 0x000d8c36, 0, 1);
+        fillRect(surface, 60, 36, 1160, 68, 0x000f2312);
+        drawString(surface, 72, 50, "ROBCO INDUSTRIES (TM) TERMLINK PROTOCOL - BOOT SELECTOR", 0x0018ff62, 0, 2);
+        drawString(surface, 72, 76, "FALLOUT 2 COMMUNITY EDITION - PLAYSTATION 4 PORT", 0x000d8c36, 0, 1);
 
         // Subtitle with count and scroll status
         char subTitle[128];
@@ -570,13 +969,13 @@ static std::string ps4RunBootMenu(const std::vector<Ps4GameEntry>& entries, int 
         } else {
             snprintf(subTitle, sizeof(subTitle), "DETECTED GAME INSTALLATIONS IN /data/:");
         }
-        drawString(surface, 56, 120, subTitle, 0x0033ff77, 0, 2);
+        drawString(surface, 72, 120, subTitle, 0x0033ff77, 0, 2);
 
         if (scrollOffset > 0) {
-            drawString(surface, 1080, 120, "[^ MORE ABOVE]", 0x000d8c36, 0, 1);
+            drawString(surface, 1080, 120, "[^ MORE]", 0x000d8c36, 0, 1);
         }
         if (scrollOffset + maxVisible < (int)entries.size()) {
-            drawString(surface, 1080, 560, "[v MORE BELOW]", 0x000d8c36, 0, 1);
+            drawString(surface, 1080, 560, "[v MORE]", 0x000d8c36, 0, 1);
         }
 
         // Game list (windowed scroll)
@@ -588,26 +987,24 @@ static std::string ps4RunBootMenu(const std::vector<Ps4GameEntry>& entries, int 
 
             bool isSelected = (i == selectedIndex);
             if (isSelected) {
-                fillRect(surface, 56, itemY, 1168, 38, 0x0018ff62);
+                fillRect(surface, 60, itemY, 1160, 38, 0x0018ff62);
                 char buf[256];
                 snprintf(buf, sizeof(buf), "> [%d] %s", i + 1, entries[i].title.c_str());
-                drawString(surface, 68, itemY + 11, buf, 0x00060d07, 0x0018ff62, 2);
-                drawString(surface, 800, itemY + 15, entries[i].path.c_str(), 0x00060d07, 0x0018ff62, 1);
+                drawStringMaxW(surface, 72, itemY + 11, 620, buf, 0x00060d07, 0x0018ff62, 2);
+                drawStringMaxW(surface, 720, itemY + 15, 470, entries[i].path.c_str(), 0x00060d07, 0x0018ff62, 1);
             } else {
                 char buf[256];
                 snprintf(buf, sizeof(buf), "  [%d] %s", i + 1, entries[i].title.c_str());
-                drawString(surface, 68, itemY + 11, buf, 0x0018ff62, 0, 2);
-                drawString(surface, 800, itemY + 15, entries[i].path.c_str(), 0x000d8c36, 0, 1);
+                drawStringMaxW(surface, 72, itemY + 11, 620, buf, 0x0018ff62, 0, 2);
+                drawStringMaxW(surface, 720, itemY + 15, 470, entries[i].path.c_str(), 0x000d8c36, 0, 1);
             }
         }
 
-        // Footer divider
-        fillRect(surface, 40, 580, 1200, 2, 0x0018ff62);
-
-        // Controls bar
-        drawString(surface, 56, 600, "CONTROLS:", 0x0033ff77, 0, 2);
-        drawString(surface, 56, 630, "[D-PAD UP / DOWN / STICK] Select     [CROSS / X] Launch Game     [CIRCLE / O] Default", 0x0018ff62, 0, 2);
-        drawString(surface, 56, 665, "TIP: Hold L1 or L2 right after launching the app to open this menu again.", 0x000d8c36, 0, 1);
+        // Footer divider + 3-line controls bar (fits TV safe area)
+        fillRect(surface, 60, 580, 1160, 2, 0x0018ff62);
+        drawString(surface, 60, 596, "[D-PAD] Select    [CROSS] Launch    [SQUARE] Settings", 0x0018ff62, 0, 2);
+        drawString(surface, 60, 626, "[CIRCLE] Keep Last Active Game", 0x0018ff62, 0, 2);
+        drawString(surface, 60, 660, "TIP: Hold L1 or L2 when launching the app to open this Boot Menu at any time.", 0x000d8c36, 0, 1);
 
         applyScanlines(surface);
         ps4VideoPresent(surface);
@@ -749,21 +1146,15 @@ std::string ps4SelectGameFolder()
         return "";
     }
 
-    // RULE 1: If only 1 game folder exists, ALWAYS skip boot menu!
-    if (folders.size() == 1) {
-        ps4Log("[ps4] single game folder found: %s — skipping boot menu\n", folders[0].path.c_str());
-        return folders[0].path;
-    }
-
-    // Initialize controller input once
+    // Always initialize controller input and read L1/L2 held at launch.
     SDL_GameController* controller = ps4OpenFirstController();
     int padHandle = ps4GetPadHandle();
     ps4Log("[ps4] boot selection input ready: controller=%p, padHandle=%d\n", controller, padHandle);
 
-    // Check if L1 or L2 is held right now at launch
-    bool up = false, down = false, confirm = false, cancel = false, menuHeld = false;
-    ps4ReadInputState(controller, padHandle, &up, &down, &confirm, &cancel, &menuHeld);
-    ps4Log("[ps4] multiple game folders (%zu found), L1/L2 pressed at launch=%d\n", folders.size(), menuHeld);
+    bool up = false, down = false, left = false, right = false;
+    bool confirm = false, cancel = false, menuHeld = false, square = false, triangle = false;
+    ps4ReadInputState(controller, padHandle, &up, &down, &left, &right, &confirm, &cancel, &menuHeld, &square, &triangle);
+    ps4Log("[ps4] %zu game folder(s) found, L1/L2 pressed at launch=%d\n", folders.size(), menuHeld);
 
     std::string activeConfig = readActiveGameConfig();
     int activeIndex = 0;
@@ -778,22 +1169,37 @@ std::string ps4SelectGameFolder()
         }
     }
 
+    // First boot = no active-game config, or the target folder has no ps4_controls.cfg yet.
+    std::string controlsPath = folders[activeIndex].path + "/ps4_controls.cfg";
+    bool hasControlsCfg = (access(controlsPath.c_str(), F_OK) == 0);
+    bool isFirstBoot = (!hasActiveConfig || !hasControlsCfg);
+
+    // Ensure every detected folder has ps4_controls.cfg + fallout2.cfg before any menu.
+    for (const Ps4GameEntry& e : folders) {
+        ps4EnsureGameConfigsInitialized(e.path.c_str());
+    }
+
     std::string chosenPath;
 
-    if (menuHeld) {
-        // L1 or L2 held at launch -> open menu immediately
+    if (isFirstBoot || menuHeld) {
+        // First boot or L1/L2 held: always open the full boot menu (no timer),
+        // even when only a single game is installed.
         chosenPath = ps4RunBootMenu(folders, activeIndex, controller, padHandle);
-    } else if (hasActiveConfig) {
-        // Show 2.5s countdown with visual progress bar and quick actions
-        bool wantMenu = ps4ShowBootCountdown(folders[activeIndex].title, controller, padHandle);
-        if (wantMenu) {
+    } else if (folders.size() == 1) {
+        // Subsequent boots with one game: launch immediately (0s).
+        chosenPath = folders[0].path;
+    } else {
+        // Subsequent boots with multiple games: 2.5s countdown with quick actions.
+        int cd = ps4ShowBootCountdown(folders[activeIndex].title, controller, padHandle);
+        if (cd == 1) {
+            chosenPath = ps4RunBootMenu(folders, activeIndex, controller, padHandle);
+        } else if (cd == 2) {
+            // Square during countdown: open settings, then land in the boot menu.
+            ps4RunSettingsMenu(folders[activeIndex], controller, padHandle);
             chosenPath = ps4RunBootMenu(folders, activeIndex, controller, padHandle);
         } else {
             chosenPath = folders[activeIndex].path;
         }
-    } else {
-        // First run with multiple folders -> open menu directly
-        chosenPath = ps4RunBootMenu(folders, 0, controller, padHandle);
     }
 
     if (controller != nullptr) {
