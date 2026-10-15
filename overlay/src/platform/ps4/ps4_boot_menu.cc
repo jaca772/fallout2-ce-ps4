@@ -726,12 +726,17 @@ static void ps4RunSettingsMenu(const Ps4GameEntry& entry, SDL_GameController* co
     int scrollOffset = 0;
 
     bool prevUp = false, prevDown = false, prevLeft = false, prevRight = false;
-    bool prevConfirm = true, prevCancel = true, prevTriangle = true;
+    bool prevConfirm = true, prevCancel = true, prevSquare = true, prevTriangle = true;
     {
         bool u, d, l, r, c, ca, m, sq, tr;
         ps4ReadInputState(controller, padHandle, &u, &d, &l, &r, &c, &ca, &m, &sq, &tr);
         prevUp = u; prevDown = d; prevLeft = l; prevRight = r;
-        prevConfirm = c; prevCancel = ca; prevTriangle = tr;
+        prevTriangle = tr;
+        // Force the action buttons to "already pressed" so a button held from the
+        // previous screen (e.g. the Square that opened this menu) can't fire here.
+        prevConfirm = true;
+        prevCancel = true;
+        prevSquare = true;
     }
 
     uint32_t repeatTimer = 0;
@@ -774,12 +779,9 @@ static void ps4RunSettingsMenu(const Ps4GameEntry& entry, SDL_GameController* co
         }
 
         if (confirmRaw && !prevConfirm) {
-            ps4SaveControlsConfig();
-            ps4WriteFallout2CfgState(cfgState, false);
-            sync();
-            ps4Log("[ps4] settings saved for %s\n", entry.path.c_str());
-            running = false;
-            break;
+            // Cross in the settings menu acts like Right (change value +1) and never
+            // closes the menu.
+            ps4SettingsOptionAdjust(selected, +1, cfgState);
         }
         prevConfirm = confirmRaw;
 
@@ -793,9 +795,12 @@ static void ps4RunSettingsMenu(const Ps4GameEntry& entry, SDL_GameController* co
         prevTriangle = triangleRaw;
 
         if (cancelRaw && !prevCancel) {
-            // Discard unsaved RAM changes and return.
-            ps4ReadControlsConfig();
-            ps4Log("[ps4] settings cancelled\n");
+            // Circle = Save & Back: persist the current settings and return to the
+            // boot menu (never discards, never launches a game).
+            ps4SaveControlsConfig();
+            ps4WriteFallout2CfgState(cfgState, false);
+            sync();
+            ps4Log("[ps4] settings saved (Circle) for %s\n", entry.path.c_str());
             running = false;
             break;
         }
@@ -843,8 +848,8 @@ static void ps4RunSettingsMenu(const Ps4GameEntry& entry, SDL_GameController* co
 
         // Footer
         fillRect(surface, 60, 580, 1160, 2, 0x0018ff62);
-        drawString(surface, 60, 596, "[U/D] Select   [L/R] Change   [X] Save   [O] Cancel", 0x0018ff62, 0, 2);
-        drawString(surface, 60, 626, "[TRIANGLE] Reset All to Recommended PS4 Defaults", 0x0018ff62, 0, 2);
+        drawString(surface, 60, 596, "[U/D] Select   [L/R] Change Value   [CIRCLE / O] Save & Back", 0x0018ff62, 0, 2);
+        drawString(surface, 60, 626, "[TRIANGLE] Reset All to Recommended PS4 & CE QoL Defaults", 0x0018ff62, 0, 2);
 
         applyScanlines(surface);
         ps4VideoPresent(surface);
@@ -935,6 +940,18 @@ static std::string ps4RunBootMenu(const std::vector<Ps4GameEntry>& entries, int 
         if (squareRaw && !prevSquare) {
             ps4Log("[ps4] boot menu: Square -> settings for '%s'\n", entries[selectedIndex].title.c_str());
             ps4RunSettingsMenu(entries[selectedIndex], controller, padHandle);
+
+            // Re-sync the edge-trigger state after the settings menu returns, so a
+            // button held while leaving it is NOT seen as a fresh press here (e.g.
+            // Cross launching the game immediately). Action buttons are forced to
+            // "already pressed".
+            bool su, sd, sl, sr, sc, sca, sm, ssq, str;
+            ps4ReadInputState(controller, padHandle, &su, &sd, &sl, &sr, &sc, &sca, &sm, &ssq, &str);
+            prevUp = su;
+            prevDown = sd;
+            prevConfirm = true;
+            prevCancel = true;
+            prevSquare = true;
         }
         prevSquare = squareRaw;
 
@@ -945,14 +962,6 @@ static std::string ps4RunBootMenu(const std::vector<Ps4GameEntry>& entries, int 
             break;
         }
         prevConfirm = confirmRaw;
-
-        if (cancelRaw && !prevCancel) {
-            ps4Log("[ps4] boot menu cancelled with Circle (keeping last active game)\n");
-            selectedIndex = (initialIndex >= 0 && initialIndex < (int)entries.size()) ? initialIndex : 0;
-            running = false;
-            break;
-        }
-        prevCancel = cancelRaw;
 
         fillRect(surface, 0, 0, 1280, 720, 0x00060d07);
 
@@ -1000,10 +1009,9 @@ static std::string ps4RunBootMenu(const std::vector<Ps4GameEntry>& entries, int 
             }
         }
 
-        // Footer divider + 3-line controls bar (fits TV safe area)
+        // Footer divider + controls bar (fits TV safe area)
         fillRect(surface, 60, 580, 1160, 2, 0x0018ff62);
         drawString(surface, 60, 596, "[D-PAD] Select    [CROSS] Launch    [SQUARE] Settings", 0x0018ff62, 0, 2);
-        drawString(surface, 60, 626, "[CIRCLE] Keep Last Active Game", 0x0018ff62, 0, 2);
         drawString(surface, 60, 660, "TIP: Hold L1 or L2 when launching the app to open this Boot Menu at any time.", 0x000d8c36, 0, 1);
 
         applyScanlines(surface);
@@ -1195,6 +1203,9 @@ std::string ps4SelectGameFolder()
             chosenPath = ps4RunBootMenu(folders, activeIndex, controller, padHandle);
         } else if (cd == 2) {
             // Square during countdown: open settings, then land in the boot menu.
+            // Both menus debounce their prev* state on entry (settings forces the
+            // action buttons, boot menu re-reads), so the held Square — or whatever
+            // button was used to leave settings — can't auto-launch a game.
             ps4RunSettingsMenu(folders[activeIndex], controller, padHandle);
             chosenPath = ps4RunBootMenu(folders, activeIndex, controller, padHandle);
         } else {
