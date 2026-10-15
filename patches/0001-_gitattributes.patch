@@ -1,0 +1,20 @@
+diff --git a/.gitattributes b/.gitattributes
+index 55e9d242..3a3fc133 100644
+--- a/.gitattributes
++++ b/.gitattributes
+@@ -11,6 +11,7 @@
+ *.plist text eol=lf
+ *.pro text eol=lf
+ *.properties text eol=lf
++*.sh text eol=lf
+ *.xml text eol=lf
+ *.yml text eol=lf
+ .clang-format text eol=lf
+@@ -18,6 +19,7 @@
+ .gitattributes text eol=lf
+ .gitignore text eol=lf
+ gradlew text eol=lf
++link.x text eol=lf
+ CMakeLists.txt text eol=lf
+ LICENSE text eol=lf
+ 
