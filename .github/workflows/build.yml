@@ -10,7 +10,11 @@ on:
   workflow_dispatch:
     inputs:
       upstream_ref:
-        description: "fallout2-ce ref (LEAVE BLANK for tested/pinned CE build; do not enter 'main')"
+        description: "CE ref to build. LEAVE BLANK = tested/pinned CE commit (scripts/config.sh UPSTREAM_REF). 'main' = newest CE main (EXPERIMENTAL). Or any SHA / tag / branch."
+        required: false
+        default: ""
+      release_notes:
+        description: "Optional custom notes shown at the TOP of the release body (auto-changelog stays below). Single line; use \\n for line breaks."
         required: false
         default: ""
       publish_release:
@@ -28,6 +32,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # The input description is static text, so surface the resolved CE ref here
+      # (and again in the release body) -- especially for "LEAVE BLANK = pinned".
+      - name: Resolve upstream ref
+        env:
+          UPSTREAM_REF_INPUT: ${{ github.event.inputs.upstream_ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$UPSTREAM_REF_INPUT" ]; then
+            requested="$UPSTREAM_REF_INPUT"
+            resolved="$UPSTREAM_REF_INPUT"
+          else
+            . scripts/config.sh
+            requested='(empty) pinned'
+            resolved="$UPSTREAM_REF"
+          fi
+          {
+            echo "- Requested ref: \`$requested\`"
+            echo "- Resolved CE ref: \`$resolved\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # The 1.6 GB OpenOrbis toolchain lives in Actions cache, NOT in the repo.
       - name: Restore OpenOrbis toolchain (cache)
@@ -84,21 +108,44 @@ jobs:
         if: ${{ inputs.publish_release }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSTREAM_REF_INPUT: ${{ github.event.inputs.upstream_ref }}
+          RELEASE_NOTES_INPUT: ${{ github.event.inputs.release_notes }}
         run: |
           set -euxo pipefail
           commit=$(sed -n 's/^upstream_commit=//p' build-manifest.txt)
           date=$(sed -n 's/^upstream_date=//p' build-manifest.txt)
           short=${commit:0:12}
-          ref='${{ github.event.inputs.upstream_ref }}'
+          subject=$(git -C tree log -1 --pretty=%s "$commit" 2>/dev/null || true)
+          ref="$UPSTREAM_REF_INPUT"
           [ -n "$ref" ] || ref='pinned (scripts/config.sh)'
           tag="build-${{ github.run_number }}"
 
-          # Idempotent on re-runs: drop a same-tag release/tag if one exists.
+          # Idempotent on re-runs: drop a same-tag release/tag if one exists. Do it
+          # BEFORE finding the previous build tag so a re-run never sees itself.
           gh release delete "$tag" --cleanup-tag --yes || true
 
+          # Previous pkg build (ignore non-build releases such as the seeded toolchain).
+          prev_tag=$(gh release list --limit 100 --json tagName \
+            --jq '[.[].tagName | select(startswith("build-"))][0] // empty' 2>/dev/null || true)
+
+          prev_ce=""
+          if [ -n "$prev_tag" ] && gh release download "$prev_tag" -p build-manifest.txt -O prev-manifest.txt >/dev/null 2>&1; then
+            prev_ce=$(sed -n 's/^upstream_commit=//p' prev-manifest.txt)
+          fi
+          ce_changes=""
+          if [ -n "$prev_ce" ] && [ "$prev_ce" != "$commit" ]; then
+            ce_changes="**CE changes:** https://github.com/fallout2-ce/fallout2-ce/compare/${prev_ce}...${commit}"$'\n\n'
+          fi
+
+          custom="$RELEASE_NOTES_INPUT"
+          custom=$(printf '%b' "$custom")
+          [ -z "$custom" ] || custom="$custom"$'\n\n'
+
           notes=$(cat <<EOF
-          PS4 pkg built from **fallout2-ce @ \`$short\`** ($date).
-          Requested ref: \`$ref\`.
+          ${custom}${ce_changes}**PS4 pkg** built from **fallout2-ce @ \`$short\`** ($date).
+          CE commit: \`$commit\`
+          Subject: $subject
+          Requested ref: \`$ref\`
 
           **Package** -- \`IV0001-FALL20002_00-FALL200020100000.pkg\` ("Fallout II Community Edition").
           Renders via native \`sceVideoOut\` flip queues (zero proprietary Sony modules needed).
@@ -108,7 +155,12 @@ jobs:
           EOF
           )
 
+          extra=()
+          [ -z "$prev_tag" ] || extra+=(--notes-start-tag "$prev_tag")
+
           gh release create "$tag" \
             --title "PS4 pkg -- CE @ $short (build #${{ github.run_number }})" \
             --notes "$notes" \
+            --generate-notes \
+            "${extra[@]}" \
             *.pkg build-manifest.txt
