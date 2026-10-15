@@ -1,8 +1,8 @@
 diff --git a/src/dbox.cc b/src/dbox.cc
-index 823a7199..48c71d2c 100644
+index d0f37770..8a8da217 100644
 --- a/src/dbox.cc
 +++ b/src/dbox.cc
-@@ -23,6 +23,11 @@
+@@ -24,6 +24,11 @@
  #include "window_manager.h"
  #include "word_wrap.h"
  
@@ -13,8 +13,8 @@ index 823a7199..48c71d2c 100644
 +
  namespace fallout {
  
- #define FILE_DIALOG_LINE_COUNT 12
-@@ -168,6 +173,24 @@ static constexpr InterfaceFrameId kInputDialogFrmIds[INPUT_DIALOG_FRM_COUNT] = {
+ namespace {
+@@ -280,6 +285,24 @@ static void fileDialogRenderFileList(unsigned char* buffer, char** fileList, int
  // TODO: see if it could be used for `showSaveFileDialog`
  static int _get_input_str(int win, int cancelKeyCode, std::string& text, int maxLength, int x, int y, ColorWithFlags textColor, Color backgroundColor, int flags)
  {
@@ -39,7 +39,7 @@ index 823a7199..48c71d2c 100644
      int cursorWidth = fontGetStringWidth("_") - 4;
      int windowWidth = windowGetWidth(win);
      int lineHeight = fontGetLineHeight();
-@@ -1119,6 +1142,31 @@ int showSaveFileDialog(char* title, char** fileList, char* dest, int fileListLen
+@@ -935,6 +958,27 @@ int showSaveFileDialog(char* title, char** fileList, char* dest, int fileListLen
      }
      dest[fileNameLength] = '\0';
  
@@ -52,16 +52,12 @@ index 823a7199..48c71d2c 100644
 +            strncpy(dest, buf, 8);
 +            dest[8] = '\0';
 +            if (g_ps4Controls.imeAutoconfirm) {
-+                windowDestroy(win);
-+                messageListFree(&messageList);
-+                fontSetCurrent(oldFont);
++                messageListFree(&ctx.messageList);
 +                return (dest[0] != '\0') ? 0 : 1;
 +            }
 +        } else if (res == PS4_IME_RESULT_CANCELED) {
 +            if (g_ps4Controls.imeAutoconfirm) {
-+                windowDestroy(win);
-+                messageListFree(&messageList);
-+                fontSetCurrent(oldFont);
++                messageListFree(&ctx.messageList);
 +                return 1;
 +            }
 +        }
