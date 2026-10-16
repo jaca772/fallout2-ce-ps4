@@ -11,6 +11,7 @@
 #include <string.h>
 #include <string>
 #include <vector>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <SDL.h>
@@ -1020,6 +1021,109 @@ bool ps4WriteFallout2CfgState(const Ps4Fallout2CfgState& state, bool applyAllRec
     return true;
 }
 
+// Opens a read-only asset packaged in /app0/assets/<assetName>.
+// After jbc_jailbreak_cred escapes to prison0 (rootvnode), the package mount
+// lives under /mnt/sandbox/pfsmnt/FALL20002-app0* or /mnt/sandbox/FALL20002_000/app0,
+// while the original sandbox credentials still see /app0/assets directly.
+static FILE* ps4OpenBundledAsset(const char* assetName)
+{
+    static const char* const kApp0Prefixes[] = {
+        "/app0/assets",
+        "/mnt/sandbox/pfsmnt/FALL20002-app0-patch0-union/assets",
+        "/mnt/sandbox/pfsmnt/FALL20002-app0/assets",
+        "/mnt/sandbox/FALL20002_000/app0/assets",
+    };
+
+    char path[512];
+    for (size_t i = 0; i < sizeof(kApp0Prefixes) / sizeof(kApp0Prefixes[0]); ++i) {
+        snprintf(path, sizeof(path), "%s/%s", kApp0Prefixes[i], assetName);
+        FILE* f = fopen(path, "rb");
+        if (f != nullptr) {
+            return f;
+        }
+    }
+
+    // Fallback: open /app0/assets/<assetName> under the original sandbox credentials
+    // and immediately restore the prison0 credentials (the open FILE* stays valid).
+    if (g_ps4OrigCredValid) {
+        jbc_cred jbCred;
+        jbc_get_cred(&jbCred);
+        jbc_set_cred(&g_ps4OrigCred);
+        snprintf(path, sizeof(path), "/app0/assets/%s", assetName);
+        FILE* f = fopen(path, "rb");
+        jbc_set_cred(&jbCred);
+        if (f != nullptr) {
+            return f;
+        }
+    }
+
+    return nullptr;
+}
+
+// Copies a bundled asset from /app0/assets/<assetName> to [dstPath].
+// When [overwriteIfDifferentSize] is false, an existing file at [dstPath] is never
+// overwritten. When true, it is overwritten only if its byte size differs from the
+// bundled asset (so updating the .pkg automatically refreshes ce.dat without
+// rewriting identical bytes on every launch).
+static bool ps4CopyBundledAssetToFile(const char* assetName, const char* dstPath, bool overwriteIfDifferentSize)
+{
+    FILE* src = ps4OpenBundledAsset(assetName);
+    if (src == nullptr) {
+        ps4Log("[ps4] bundled asset '%s' not found in /app0/assets\n", assetName);
+        return false;
+    }
+
+    if (fseek(src, 0, SEEK_END) != 0) {
+        fclose(src);
+        return false;
+    }
+    long srcSize = ftell(src);
+    if (srcSize < 0 || fseek(src, 0, SEEK_SET) != 0) {
+        fclose(src);
+        return false;
+    }
+
+    struct stat st;
+    if (stat(dstPath, &st) == 0) {
+        if (!overwriteIfDifferentSize || (long)st.st_size == srcSize) {
+            fclose(src);
+            return false;
+        }
+    }
+
+    FILE* dst = fopen(dstPath, "wb");
+    if (dst == nullptr) {
+        ps4Log("[ps4] failed to open '%s' for asset seeding (errno=%d)\n", dstPath, errno);
+        fclose(src);
+        return false;
+    }
+
+    char buf[65536];
+    size_t n;
+    bool ok = true;
+    while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
+        if (fwrite(buf, 1, n, dst) != n) {
+            ok = false;
+            break;
+        }
+    }
+
+    fflush(dst);
+    int fd = fileno(dst);
+    if (fd >= 0) {
+        fsync(fd);
+    }
+    fclose(dst);
+    fclose(src);
+
+    if (ok) {
+        ps4Log("[ps4] seeded bundled asset %s -> %s (%ld bytes)\n", assetName, dstPath, srcSize);
+    } else {
+        ps4Log("[ps4] ERROR writing bundled asset %s -> %s\n", assetName, dstPath);
+    }
+    return ok;
+}
+
 void ps4EnsureGameConfigsInitialized(const char* folderPath)
 {
     if (folderPath == nullptr || folderPath[0] == '\0') {
@@ -1028,13 +1132,34 @@ void ps4EnsureGameConfigsInitialized(const char* folderPath)
 
     ps4SetDataPath(folderPath);
 
-    char controlsPath[512];
-    snprintf(controlsPath, sizeof(controlsPath), "%s/ps4_controls.cfg", folderPath);
-    bool hasControls = (access(controlsPath, F_OK) == 0);
+    // 1. Seed ce.dat (always refresh if missing or size differs from bundled version)
+    char ceCandidate[512];
+    char cePath[512];
+    snprintf(ceCandidate, sizeof(ceCandidate), "%s/ce.dat", folderPath);
+    if (!ps4ResolveCaseInsensitive(ceCandidate, cePath, sizeof(cePath))) {
+        strncpy(cePath, ceCandidate, sizeof(cePath) - 1);
+        cePath[sizeof(cePath) - 1] = '\0';
+    }
+    ps4CopyBundledAssetToFile("ce.dat", cePath, /*overwriteIfDifferentSize=*/true);
 
+    // 2. Seed f2_res.dat (151 .edg map borders + 27 HR_*.FRM assets) only if absent
+    char resCandidate[512];
+    char resPath[512];
+    snprintf(resCandidate, sizeof(resCandidate), "%s/f2_res.dat", folderPath);
+    if (!ps4ResolveCaseInsensitive(resCandidate, resPath, sizeof(resPath))) {
+        ps4CopyBundledAssetToFile("f2_res.dat", resCandidate, /*overwriteIfDifferentSize=*/false);
+    }
+
+    // 3. Seed or update ps4_controls.cfg and fallout2.cfg
+    char controlsCandidate[512];
+    char controlsPath[512];
+    snprintf(controlsCandidate, sizeof(controlsCandidate), "%s/ps4_controls.cfg", folderPath);
+    bool hasControls = ps4ResolveCaseInsensitive(controlsCandidate, controlsPath, sizeof(controlsPath));
+
+    char cfgCandidate[512];
     char cfgPath[512];
-    snprintf(cfgPath, sizeof(cfgPath), "%s/fallout2.cfg", folderPath);
-    bool hasCfg = (access(cfgPath, F_OK) == 0);
+    snprintf(cfgCandidate, sizeof(cfgCandidate), "%s/fallout2.cfg", folderPath);
+    bool hasCfg = ps4ResolveCaseInsensitive(cfgCandidate, cfgPath, sizeof(cfgPath));
 
     if (!hasControls) {
         // First PS4 launch for this folder: start from the PS4 control defaults.
@@ -1043,7 +1168,9 @@ void ps4EnsureGameConfigsInitialized(const char* folderPath)
     }
 
     if (!hasCfg) {
-        // No fallout2.cfg: create it with the full recommended PS4 QoL profile.
+        // Seed the commented template from /app0/assets/fallout2.cfg first (if present)
+        // so [system]/[sound] and comments are preserved, then apply the PS4 QoL profile.
+        ps4CopyBundledAssetToFile("fallout2.cfg", cfgCandidate, /*overwriteIfDifferentSize=*/false);
         Ps4Fallout2CfgState state;
         ps4WriteFallout2CfgState(state, true);
     } else if (!hasControls) {

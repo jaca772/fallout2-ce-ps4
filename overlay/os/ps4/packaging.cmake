@@ -18,6 +18,7 @@ set(PS4_PAID        "0x3800000000000011")
 set(PS4_PKG_DIR "${CMAKE_CURRENT_BINARY_DIR}/pkg")
 set(PS4_SCE_SYS_SRC "${CMAKE_SOURCE_DIR}/os/ps4/sce_sys")
 set(PS4_SCE_MODULE_SRC "${CMAKE_SOURCE_DIR}/os/ps4/sce_module")
+set(PS4_ASSETS_SRC "${CMAKE_SOURCE_DIR}/os/ps4/assets")
 
 # Optional custom app icon — keeps the repo free of any non-free artwork. Drop a
 # 512x512 PNG named icon0.png at the build root, or pass -DPS4_ICON=/path/to.png;
@@ -27,9 +28,9 @@ set(PS4_SCE_MODULE_SRC "${CMAKE_SOURCE_DIR}/os/ps4/sce_module")
 #  after first dropping the file — EXISTS is checked at configure time.)
 set(PS4_ICON "${CMAKE_SOURCE_DIR}/icon0.png" CACHE FILEPATH "Custom 512x512 PS4 app icon PNG (overrides the placeholder)")
 
-# Staged assets (icon0.png, sce_module) are copied into the pkg but aren't
+# Staged assets (icon0.png, sce_module, assets) are copied into the pkg but aren't
 # build outputs, so DEPENDS on them — otherwise editing/dropping one won't repackage.
-file(GLOB PS4_PKG_ASSETS "${PS4_SCE_SYS_SRC}/*" "${PS4_SCE_MODULE_SRC}/*")
+file(GLOB PS4_PKG_ASSETS "${PS4_SCE_SYS_SRC}/*" "${PS4_SCE_MODULE_SRC}/*" "${PS4_ASSETS_SRC}/*")
 if(EXISTS "${PS4_ICON}")
     message(STATUS "PS4: using custom app icon ${PS4_ICON}")
     set(PS4_ICON_OVERRIDE COMMAND ${CMAKE_COMMAND} -E copy "${PS4_ICON}" "${PS4_PKG_DIR}/sce_sys/icon0.png")
@@ -91,6 +92,8 @@ add_custom_command(
     ${PS4_ICON_OVERRIDE}
     COMMAND ${CMAKE_COMMAND} -E make_directory "${PS4_PKG_DIR}/sce_module"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PS4_SCE_MODULE_SRC}" "${PS4_PKG_DIR}/sce_module"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${PS4_PKG_DIR}/assets"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PS4_ASSETS_SRC}" "${PS4_PKG_DIR}/assets"
     COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_BINARY_DIR}/eboot.bin" "${PS4_PKG_DIR}/eboot.bin"
     COMMAND "${GP4_TOOL}" -out "${PS4_PKG_DIR}/${EXECUTABLE_NAME}.gp4" --content-id "${PS4_CONTENT_ID}" --path "${PS4_PKG_DIR}"
     COMMAND ${CMAKE_COMMAND} -E env ${DOTFIX} ${SFO_TOOL} pkg_build "${PS4_PKG_DIR}/${EXECUTABLE_NAME}.gp4" "${CMAKE_BINARY_DIR}"
