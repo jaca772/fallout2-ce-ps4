@@ -640,7 +640,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
         bool circleCloses = calledShotActive
             || (menuOpen && !(inCursorWindow && g_ps4Controls.circleCloseAll == 0));
 
-        // --- 0. Button mapping (remappable via ps4_controls.cfg) ---
+        // --- 0. Button mapping (remappable via [controls] in fallout2.cfg) ---
         // Done first so the cursor-boost result is available to the cursor below,
         // and the LMB/RMB results to the mouse-state block at the end of the frame.
         g_padLmb = false;
@@ -692,7 +692,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
                 continue;
             }
             // While L2 is held, L1 is the loot-assist modifier (L2+L1), not its
-            // mapped action (inventory) — consume it so it doesn't also fire.
+            // mapped action (skilldex by default) — consume it so it doesn't also fire.
             if (g_ps4Controls.lootAssist && l2Held && fb.button == SDL_CONTROLLER_BUTTON_LEFTSHOULDER) {
                 g_prevButtons[fb.button] = SDL_GameControllerGetButton(g_gamepad, fb.button) != 0;
                 continue;
@@ -1173,7 +1173,7 @@ void ps4GamepadPoll(int* wheelX, int* wheelY)
                 uint16_t fy = padData.touch.touch[0].y;
                 if (s_prevFinger) {
                     // Relative trackpad move. DS4 touchpad is ~1920x943 units.
-                    // All gains are user-tunable via /data/fallout2/ps4_controls.cfg.
+                    // All gains are user-tunable via [controls] in fallout2.cfg.
                     int ddx = (int)fx - (int)s_prevX;
                     int ddy = (int)fy - (int)s_prevY;
 

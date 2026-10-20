@@ -549,6 +549,9 @@ static int ps4ResolutionPresetIndex(const Ps4Fallout2CfgState& cfg)
     return -1;
 }
 
+// First option index that edits a button binding (see s_buttonBindings in ps4.cc).
+static const int kPs4ButtonOptionBase = 16;
+
 static const char* ps4SettingsOptionName(int opt)
 {
     switch (opt) {
@@ -568,7 +571,15 @@ static const char* ps4SettingsOptionName(int opt)
     case 13: return "[CE QoL] Party Loot/Barter";
     case 14: return "[CE QoL] Inventory Columns";
     case 15: return "[CE QoL] Always Run + Fast Combat";
-    default: return "";
+    default: {
+        int index = opt - kPs4ButtonOptionBase;
+        if (index >= 0 && index < ps4ButtonBindingCount()) {
+            static char label[48];
+            snprintf(label, sizeof(label), "Button: %s", ps4ButtonBindingLabel(index));
+            return label;
+        }
+        return "";
+    }
     }
 }
 
@@ -624,7 +635,15 @@ static void ps4SettingsOptionValue(int opt, const Ps4Fallout2CfgState& cfg, char
     case 13: snprintf(buf, bufSize, "%s", cfg.partyLootAndBarter ? "On" : "Off"); break;
     case 14: snprintf(buf, bufSize, "%s", cfg.inventoryColumns >= 2 ? "2 Columns" : "1 Column"); break;
     case 15: snprintf(buf, bufSize, "%s", cfg.running ? "On" : "Off"); break;
-    default: buf[0] = '\0'; break;
+    default: {
+        int index = opt - kPs4ButtonOptionBase;
+        if (index >= 0 && index < ps4ButtonBindingCount()) {
+            snprintf(buf, bufSize, "%s", ps4ActionLabel(ps4ButtonBindingAction(index)));
+        } else {
+            buf[0] = '\0';
+        }
+        break;
+    }
     }
 }
 
@@ -696,7 +715,13 @@ static void ps4SettingsOptionAdjust(int opt, int dir, Ps4Fallout2CfgState& cfg)
     case 13: cfg.partyLootAndBarter = !cfg.partyLootAndBarter; break;
     case 14: cfg.inventoryColumns = (cfg.inventoryColumns >= 2) ? 1 : 2; break;
     case 15: cfg.running = !cfg.running; cfg.expandBarterAndAp = cfg.running; break;
-    default: break;
+    default: {
+        int index = opt - kPs4ButtonOptionBase;
+        if (index >= 0 && index < ps4ButtonBindingCount()) {
+            ps4ButtonBindingCycle(index, dir);
+        }
+        break;
+    }
     }
 }
 
@@ -720,7 +745,7 @@ static void ps4RunSettingsMenu(const Ps4GameEntry& entry, SDL_GameController* co
         return;
     }
 
-    const int kOptionCount = 16;
+    const int kOptionCount = kPs4ButtonOptionBase + ps4ButtonBindingCount();
     const int maxVisible = 9;
     int selected = 0;
     int scrollOffset = 0;
@@ -795,9 +820,9 @@ static void ps4RunSettingsMenu(const Ps4GameEntry& entry, SDL_GameController* co
         prevTriangle = triangleRaw;
 
         if (cancelRaw && !prevCancel) {
-            // Circle = Save & Back: persist the current settings and return to the
-            // boot menu (never discards, never launches a game).
-            ps4SaveControlsConfig();
+            // Circle = Save & Back: persist the current settings (fallout2.cfg
+            // carries [controls] too) and return to the boot menu (never discards,
+            // never launches a game).
             ps4WriteFallout2CfgState(cfgState, false);
             sync();
             ps4Log("[ps4] settings saved (Circle) for %s\n", entry.path.c_str());
@@ -1177,12 +1202,13 @@ std::string ps4SelectGameFolder()
         }
     }
 
-    // First boot = no active-game config, or the target folder has no ps4_controls.cfg yet.
-    std::string controlsPath = folders[activeIndex].path + "/ps4_controls.cfg";
-    bool hasControlsCfg = (access(controlsPath.c_str(), F_OK) == 0);
+    // First boot = no active-game config, or the target folder's fallout2.cfg has
+    // no [controls] section yet (checked before ps4EnsureGameConfigsInitialized
+    // seeds the missing pieces below).
+    bool hasControlsCfg = ps4HasControlsConfig(folders[activeIndex].path.c_str());
     bool isFirstBoot = (!hasActiveConfig || !hasControlsCfg);
 
-    // Ensure every detected folder has ps4_controls.cfg + fallout2.cfg before any menu.
+    // Ensure every detected folder has fallout2.cfg with a [controls] section.
     for (const Ps4GameEntry& e : folders) {
         ps4EnsureGameConfigsInitialized(e.path.c_str());
     }

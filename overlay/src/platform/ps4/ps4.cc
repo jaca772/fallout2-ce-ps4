@@ -390,7 +390,8 @@ void ps4ReadDisplayConfig(int* outWidth, int* outHeight, int* outScale)
 }
 
 // User-tunable gamepad settings with sensible defaults (see Ps4ControlsConfig
-// default member initializers). Overridden by /data/fallout2/ps4_controls.cfg.
+// default member initializers). Overridden by the [controls] section of the
+// current game folder's fallout2.cfg.
 Ps4ControlsConfig g_ps4Controls;
 
 static const char* ps4ScaleModeName(int m)
@@ -456,6 +457,7 @@ static const char* ps4WrsName(int r)
     }
 }
 
+// World stick role parse (PS4_WRS_*), shared by both sticks.
 static int ps4ParseWrs(const char* s)
 {
     if (strcmp(s, "cursor") == 0) return PS4_WRS_CURSOR;
@@ -467,151 +469,74 @@ static int ps4ParseWrs(const char* s)
 }
 
 
-static void ps4WriteDefaultControlsConfig(const char* path)
+const char* ps4ActionLabel(int a)
 {
-    FILE* f = fopen(path, "w");
-    if (f == nullptr) {
+    switch (a) {
+    case PS4_ACT_LMB: return "Left Click (LMB)";
+    case PS4_ACT_RMB: return "Right Click (RMB)";
+    case PS4_ACT_CURSORBOOST: return "Cursor Boost";
+    case PS4_ACT_ESC: return "Escape / Menu";
+    case PS4_ACT_INVENTORY: return "Inventory";
+    case PS4_ACT_CHARSHEET: return "Character Sheet";
+    case PS4_ACT_SKILLDEX: return "Skilldex";
+    case PS4_ACT_PIPBOY: return "Pip-Boy";
+    case PS4_ACT_COMBAT: return "Combat / End Turn";
+    case PS4_ACT_ENDCOMBAT: return "End Combat";
+    case PS4_ACT_RELOAD: return "Reload Weapon";
+    case PS4_ACT_WEAPONMODE: return "Weapon Mode";
+    case PS4_ACT_SWAPHANDS: return "Swap Hands";
+    default: return "None";
+    }
+}
+
+// One entry per physical button. Single source of truth for the [controls]
+// mapping: the config reader/writer and the boot menu all iterate this table.
+struct Ps4ButtonBinding {
+    const char* key;
+    const char* label;
+    int Ps4ControlsConfig::*member;
+};
+
+static const Ps4ButtonBinding s_buttonBindings[] = {
+    { "btn_cross", "Cross", &Ps4ControlsConfig::actCross },
+    { "btn_circle", "Circle", &Ps4ControlsConfig::actCircle },
+    { "btn_square", "Square", &Ps4ControlsConfig::actSquare },
+    { "btn_triangle", "Triangle", &Ps4ControlsConfig::actTriangle },
+    { "btn_l1", "L1", &Ps4ControlsConfig::actL1 },
+    { "btn_r1", "R1", &Ps4ControlsConfig::actR1 },
+    { "btn_l3", "L3", &Ps4ControlsConfig::actL3 },
+    { "btn_r3", "R3", &Ps4ControlsConfig::actR3 },
+    { "btn_share", "Touchpad Click", &Ps4ControlsConfig::actShare },
+    { "btn_options", "Options", &Ps4ControlsConfig::actOptions },
+};
+
+static const int kPs4ButtonBindingCount = (int)(sizeof(s_buttonBindings) / sizeof(s_buttonBindings[0]));
+
+int ps4ButtonBindingCount()
+{
+    return kPs4ButtonBindingCount;
+}
+
+const char* ps4ButtonBindingLabel(int index)
+{
+    return (index >= 0 && index < kPs4ButtonBindingCount) ? s_buttonBindings[index].label : "";
+}
+
+int ps4ButtonBindingAction(int index)
+{
+    return (index >= 0 && index < kPs4ButtonBindingCount)
+        ? g_ps4Controls.*(s_buttonBindings[index].member)
+        : PS4_ACT_NONE;
+}
+
+void ps4ButtonBindingCycle(int index, int dir)
+{
+    if (index < 0 || index >= kPs4ButtonBindingCount) {
         return;
     }
-    fprintf(f,
-        "# Fallout 2 PS4 gamepad tuning. Edit over FTP and relaunch (no rebuild).\n"
-        "# Lower touch_sensitivity if the touchpad cursor moves too fast.\n"
-        "[controls]\n"
-        "# Touchpad cursor (acceleration curve, like a laptop trackpad):\n"
-        "#  touch_sensitivity = gain when moving SLOWLY (lower = more precise)\n"
-        "#  touch_accel       = extra speed when moving FAST (0 = linear)\n"
-        "#  touch_smoothing   = 0..0.9, higher = smoother but a touch laggier\n"
-        "#  touch_deadzone    = raise if the cursor drifts with a finger at rest\n"
-        "touch_sensitivity=%.2f\n"
-        "touch_accel=%.3f\n"
-        "touch_smoothing=%.2f\n"
-        "touch_deadzone=%.1f\n"
-        "cursor_speed=%.0f\n"
-        "cursor_speed_boost=%.0f\n"
-        "walk_deadzone=%.2f\n"
-        "run_threshold=%.2f\n"
-        "camera_deadzone_x=%d\n"
-        "camera_deadzone_y=%d\n"
-        "# Stick roles in the world (each stick independently):\n"
-        "#  walk     = march the character (walk/run)   [left stick only]\n"
-        "#  camera   = pan/look around (cursor stays where it is)\n"
-        "#  centered = pan with the cursor locked to screen centre; frees at map edge\n"
-        "#  cursor   = move the cursor freely (like the touchpad)   |   off = nothing\n"
-        "# Default scheme: left = centered camera, right = free cursor.\n"
-        "world_left_stick=%s\n"
-        "world_right_stick=%s\n"
-        "\n"
-        "# Aim assist (hold L2):\n"
-        "#  combat_auto_aim = 1 to snap onto the nearest enemy in combat (0 = off)\n"
-        "#  world_auto_aim  = 1 to snap onto the nearest person to talk to / interact\n"
-        "#                    with out of combat (0 = off)\n"
-        "#  auto_aim_whole_map = 1 to consider the whole map, 0 = only what's on screen\n"
-        "#  auto_aim_center_camera = 1 to pan the camera so the aimed target is centred\n"
-        "#  (targets always require a clear line of sight and be within reach.)\n"
-        "combat_auto_aim=%d\n"
-        "world_auto_aim=%d\n"
-        "auto_aim_whole_map=%d\n"
-        "auto_aim_center_camera=%d\n"
-        "# Melee/unarmed on an out-of-range target (Cross while aiming in combat):\n"
-        "#  0 = off  (the engine just says \"out of range\")\n"
-        "#  1 = run up to the target but DON'T swing (default)\n"
-        "#  2 = run up and then attack\n"
-        "melee_approach=%d\n"
-        "# Loot/interact assist: hold L2 + L1 to snap onto the nearest container,\n"
-        "#  corpse or door (works in and out of combat). D-pad L/R cycles, Cross opens\n"
-        "#  it (loot / open-close a door). With a Skilldex skill active (e.g. Lockpick)\n"
-        "#  Cross applies that skill to the snapped target.\n"
-        "#  loot_snap_distance = reach in hexes; loot_skip_empty = 1 skips empty ones.\n"
-        "loot_assist=%d\n"
-        "loot_snap_distance=%d\n"
-        "loot_skip_empty=%d\n"
-        "# Circle in the item windows (inventory / barter / loot):\n"
-        "#  0 = Circle stays right-click there (cycle to the examine cursor, inspect\n"
-        "#      items); close those windows with Options/Esc or their Done button.\n"
-        "#  1 = Circle closes EVERY menu including those (one-button close-all).\n"
-        "circle_close_all=%d\n"
-        "\n"
-        "# Display scaling mode on 1080p panel:\n"
-        "#  letterbox = preserve original aspect ratio (4:3 gets pillarbox black bars, 16:9 fills with no bars)\n"
-        "#  fill      = stretch to fill 100%% of 16:9 screen\n"
-        "#  integer   = integer scaling factor centered\n"
-        "scale_mode=%s\n"
-        "\n"
-        "# Analog stick feel:\n"
-        "#  stick_deadzone = radial deadzone threshold (0.05..0.70, default 0.15)\n"
-        "#  stick_curve    = response curve exponent (1.0 = linear, 1.5 = smooth modern console curve)\n"
-        "stick_deadzone=%.2f\n"
-        "stick_curve=%.2f\n"
-        "\n"
-        "# Advanced feel tuning:\n"
-        "#  walk_project_tiles = hexes projected per walk step (higher = smoother, less responsive)\n"
-        "#  run_settle_ms      = delay before the first walk step so a hard push starts a run\n"
-        "#  touch_max_gain     = cap on touchpad acceleration\n"
-        "#  touch_tap_ms / touch_tap_move = a touch shorter/smaller than these counts as a click\n"
-        "#  dpad_repeat_ms     = D-pad arrow repeat speed (lower = faster)\n"
-        "#  camera_pan_threshold = right-stick deflection (0..1) needed to pan the camera\n"
-        "walk_project_tiles=%d\n"
-        "run_settle_ms=%d\n"
-        "touch_max_gain=%.1f\n"
-        "touch_tap_ms=%d\n"
-        "touch_tap_move=%d\n"
-        "dpad_repeat_ms=%d\n"
-        "camera_pan_threshold=%.2f\n"
-        "\n"
-        "# Button mapping. Assign one action to each button.\n"
-        "# Actions: lmb rmb esc inventory charsheet skilldex pipboy boost combat\n"
-        "#          endcombat reload weaponmode swaphands none\n"
-        "#  lmb = click/confirm, rmb = right-click (cursor mode), boost = hold for faster cursor\n"
-        "#  combat = start fight (out) / end turn — or end the fight when no enemy still\n"
-        "#           wants to attack (in) ; endcombat = force-leave the fight\n"
-        "#  reload = reload the active-hand weapon (spends AP in combat)\n"
-        "#  weaponmode = cycle the weapon's attack mode (fists<->kick, single/aimed/burst)\n"
-        "#  swaphands  = switch to the other equipped weapon\n"
-        "# (D-pad is fixed to the arrow keys / target cycling in combat.)\n"
-        "# NOTE: btn_share is the TOUCHPAD CLICK (the Share button is reserved by\n"
-        "#  the PS4 system and cannot be read by games).\n"
-        "btn_cross=%s\n"
-        "btn_circle=%s\n"
-        "btn_square=%s\n"
-        "btn_triangle=%s\n"
-        "btn_l1=%s\n"
-        "btn_r1=%s\n"
-        "btn_l3=%s\n"
-        "btn_r3=%s\n"
-        "btn_share=%s\n"
-        "btn_options=%s\n"
-        "\n"
-        "# On-screen keyboard (PS4 native IME)\n"
-        "#  ime = 1 to use native PS4 keyboard for text fields (character name, save description, file name)\n"
-        "#  ime_autoconfirm = 1 to automatically confirm input when keyboard is done\n"
-        "ime=%d\n"
-        "ime_autoconfirm=%d\n",
-        g_ps4Controls.touchSensitivity, g_ps4Controls.touchAccel,
-        g_ps4Controls.touchSmoothing, g_ps4Controls.touchDeadzone,
-        g_ps4Controls.cursorSpeed, g_ps4Controls.cursorSpeedBoost,
-        g_ps4Controls.walkDeadzone, g_ps4Controls.runThreshold,
-        g_ps4Controls.cameraDeadzoneX, g_ps4Controls.cameraDeadzoneY,
-        ps4WrsName(g_ps4Controls.worldLeftStick),
-        ps4WrsName(g_ps4Controls.worldRightStick),
-        g_ps4Controls.combatAutoAim, g_ps4Controls.worldAutoAim,
-        g_ps4Controls.autoAimWholeMap, g_ps4Controls.autoAimCenterCamera,
-        g_ps4Controls.meleeApproach,
-        g_ps4Controls.lootAssist, g_ps4Controls.lootSnapDistance, g_ps4Controls.lootSkipEmpty,
-        g_ps4Controls.circleCloseAll,
-        ps4ScaleModeName(g_ps4Controls.scaleMode),
-        g_ps4Controls.stickDeadzone, g_ps4Controls.stickCurve,
-        g_ps4Controls.walkProjectTiles, g_ps4Controls.runSettleMs,
-        g_ps4Controls.touchMaxGain, g_ps4Controls.touchTapMs,
-        g_ps4Controls.touchTapMove, g_ps4Controls.dpadRepeatMs,
-        g_ps4Controls.cameraPanThreshold,
-        ps4ActionName(g_ps4Controls.actCross), ps4ActionName(g_ps4Controls.actCircle),
-        ps4ActionName(g_ps4Controls.actSquare), ps4ActionName(g_ps4Controls.actTriangle),
-        ps4ActionName(g_ps4Controls.actL1), ps4ActionName(g_ps4Controls.actR1),
-        ps4ActionName(g_ps4Controls.actL3), ps4ActionName(g_ps4Controls.actR3),
-        ps4ActionName(g_ps4Controls.actShare), ps4ActionName(g_ps4Controls.actOptions),
-        g_ps4Controls.imeEnabled, g_ps4Controls.imeAutoconfirm);
-    fclose(f);
-    ps4Log("[ps4] wrote default ps4_controls.cfg\n");
+    const int actionCount = PS4_ACT_SWAPHANDS + 1;
+    const int action = (ps4ButtonBindingAction(index) + dir + actionCount) % actionCount;
+    g_ps4Controls.*(s_buttonBindings[index].member) = action;
 }
 
 static char* ps4Trim(char* s)
@@ -626,36 +551,114 @@ static char* ps4Trim(char* s)
     return s;
 }
 
+// Resolves <folderPath or current data path>/fallout2.cfg. Falls back to the
+// plain (lowercase) name when no case variant exists; returns whether it exists.
+static bool ps4ResolveFallout2Cfg(const char* folderPath, char* outPath, size_t outSize)
+{
+    const char* folder = (folderPath != nullptr && folderPath[0] != '\0')
+        ? folderPath : ps4GetDataPath();
+    char candidate[512];
+    snprintf(candidate, sizeof(candidate), "%s/fallout2.cfg", folder);
+    if (ps4ResolveCaseInsensitive(candidate, outPath, outSize)) {
+        return true;
+    }
+    strncpy(outPath, candidate, outSize - 1);
+    outPath[outSize - 1] = '\0';
+    return false;
+}
+
+bool ps4HasControlsConfig(const char* folderPath)
+{
+    char cfgPath[512];
+    ps4ResolveFallout2Cfg(folderPath, cfgPath, sizeof(cfgPath));
+
+    FILE* f = fopen(cfgPath, "r");
+    if (f == nullptr) {
+        return false;
+    }
+
+    bool found = false;
+    char line[512];
+    while (!found && fgets(line, sizeof(line), f) != nullptr) {
+        char* p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p != '[') {
+            continue;
+        }
+        char* close = strchr(p, ']');
+        if (close == nullptr) {
+            continue;
+        }
+        *close = '\0';
+        found = (SDL_strcasecmp(p + 1, "controls") == 0);
+    }
+    fclose(f);
+    return found;
+}
+
 void ps4ReadControlsConfig()
 {
+    g_ps4Controls = Ps4ControlsConfig();
+
     char path[512];
-    snprintf(path, sizeof(path), "%s/ps4_controls.cfg", ps4GetDataPath());
+    ps4ResolveFallout2Cfg(nullptr, path, sizeof(path));
     FILE* f = fopen(path, "r");
     if (f == nullptr) {
-        // First run: keep defaults and drop a commented template to edit.
-        ps4WriteDefaultControlsConfig(path);
         ps4VideoSetScaleMode((Ps4ScaleMode)g_ps4Controls.scaleMode);
-        ps4Log("[ps4] controls: defaults (touch=%.2f scale=%s dz=%.2f curve=%.2f)\n",
-            g_ps4Controls.touchSensitivity, ps4ScaleModeName(g_ps4Controls.scaleMode),
-            g_ps4Controls.stickDeadzone, g_ps4Controls.stickCurve);
+        ps4Log("[ps4] controls: defaults (no fallout2.cfg at %s)\n", path);
         return;
     }
+
+    bool inControls = false;
+    bool sawControlsSection = false;
     char line[256];
     while (fgets(line, sizeof(line), f) != nullptr) {
-        char* eq = strchr(line, '=');
+        char* p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '[') {
+            char* close = strchr(p, ']');
+            if (close != nullptr) {
+                *close = '\0';
+                inControls = (SDL_strcasecmp(p + 1, "controls") == 0);
+                if (inControls) {
+                    sawControlsSection = true;
+                }
+            }
+            continue;
+        }
+        if (*p == '#' || *p == ';' || *p == '\0') {
+            continue;
+        }
+        char* eq = strchr(p, '=');
         if (eq == nullptr) {
             continue;
         }
         *eq = '\0';
-        char* key = ps4Trim(line);
-        // Strip an inline comment ("key=value  # note") so the value is parsed
+        char* key = ps4Trim(p);
+        // Strip an inline comment ("key=value  ; note") so the value is parsed
         // exactly; ps4Trim then removes any trailing whitespace left behind.
-        char* hash = strchr(eq + 1, '#');
-        if (hash != nullptr) {
-            *hash = '\0';
+        char* comment = strpbrk(eq + 1, "#;");
+        if (comment != nullptr) {
+            *comment = '\0';
         }
         char* val = ps4Trim(eq + 1);
-        if (*key == '#' || *key == '[' || *key == '\0') {
+        if (*key == '\0' || !inControls) {
+            continue;
+        }
+
+        bool isButton = false;
+        for (int i = 0; i < kPs4ButtonBindingCount; ++i) {
+            if (strcmp(key, s_buttonBindings[i].key) != 0) {
+                continue;
+            }
+            int a = ps4ParseAction(val);
+            if (a >= 0) {
+                g_ps4Controls.*(s_buttonBindings[i].member) = a;
+            }
+            isButton = true;
+            break;
+        }
+        if (isButton) {
             continue;
         }
 
@@ -725,26 +728,6 @@ void ps4ReadControlsConfig()
             g_ps4Controls.dpadRepeatMs = atoi(val);
         } else if (strcmp(key, "camera_pan_threshold") == 0) {
             g_ps4Controls.cameraPanThreshold = (float)atof(val);
-        } else if (strcmp(key, "btn_cross") == 0) {
-            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actCross = a;
-        } else if (strcmp(key, "btn_circle") == 0) {
-            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actCircle = a;
-        } else if (strcmp(key, "btn_square") == 0) {
-            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actSquare = a;
-        } else if (strcmp(key, "btn_triangle") == 0) {
-            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actTriangle = a;
-        } else if (strcmp(key, "btn_l1") == 0) {
-            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actL1 = a;
-        } else if (strcmp(key, "btn_r1") == 0) {
-            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actR1 = a;
-        } else if (strcmp(key, "btn_l3") == 0) {
-            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actL3 = a;
-        } else if (strcmp(key, "btn_r3") == 0) {
-            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actR3 = a;
-        } else if (strcmp(key, "btn_share") == 0) {
-            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actShare = a;
-        } else if (strcmp(key, "btn_options") == 0) {
-            int a = ps4ParseAction(val); if (a >= 0) g_ps4Controls.actOptions = a;
         } else if (strcmp(key, "ime") == 0) {
             g_ps4Controls.imeEnabled = atoi(val);
         } else if (strcmp(key, "ime_autoconfirm") == 0) {
@@ -752,6 +735,10 @@ void ps4ReadControlsConfig()
         }
     }
     fclose(f);
+
+    if (!sawControlsSection) {
+        ps4SaveControlsConfig();
+    }
 
     // Clamp to sane ranges so a typo can't make control impossible.
     if (g_ps4Controls.touchSensitivity <= 0.0f) g_ps4Controls.touchSensitivity = 0.25f;
@@ -803,13 +790,6 @@ void ps4ReadControlsConfig()
 }
 
 // --- Config management API (boot menu / RobCo Configuration Terminal) ---
-
-void ps4SaveControlsConfig()
-{
-    char path[512];
-    snprintf(path, sizeof(path), "%s/ps4_controls.cfg", ps4GetDataPath());
-    ps4WriteDefaultControlsConfig(path);
-}
 
 // Reads an integer key from [section] in a simple INI file. Section and key are
 // matched case-insensitively; the key allows optional surrounding spaces. Returns
@@ -872,18 +852,10 @@ void ps4ReadFallout2CfgState(Ps4Fallout2CfgState* outState)
     outState->subtitles = ps4ReadIniInt(cfgPath, "preferences", "subtitles", 1);
 }
 
-// Non-destructive INI key setter. Searches [section] (case-insensitive): replaces
-// an existing `key=value` line, appends it to the end of the section when the key
-// is missing, or appends a new section + key at the end of the file when the
-// section does not exist. Every other line is preserved, so mod-specific sections
-// (e.g. [system]/[sound]) stay intact.
-static void setIniInt(std::vector<std::string>& lines, const char* section, const char* key, int value)
+// Finds [section] (case-insensitive). On success sets [start] (header index) and
+// [end] (first line after the section; may equal lines.size()).
+static bool findIniSection(const std::vector<std::string>& lines, const char* section, size_t* start, size_t* end)
 {
-    const std::string sectionHeader = std::string("[") + section + "]";
-    const std::string keyEq = std::string(key) + "=";
-
-    size_t sectionStart = std::string::npos;
-    size_t sectionEnd = std::string::npos;
     for (size_t i = 0; i < lines.size(); ++i) {
         size_t first = lines[i].find_first_not_of(" \t");
         if (first == std::string::npos || lines[i][first] != '[') {
@@ -893,30 +865,38 @@ static void setIniInt(std::vector<std::string>& lines, const char* section, cons
         if (close == std::string::npos) {
             continue;
         }
-        if (SDL_strcasecmp(lines[i].substr(first + 1, close - first - 1).c_str(), section) == 0) {
-            sectionStart = i;
-            for (size_t j = i + 1; j < lines.size(); ++j) {
-                size_t f2 = lines[j].find_first_not_of(" \t");
-                if (f2 != std::string::npos && lines[j][f2] == '[') {
-                    sectionEnd = j;
-                    break;
-                }
-            }
-            if (sectionEnd == std::string::npos) {
-                sectionEnd = lines.size();
-            }
-            break;
+        if (SDL_strcasecmp(lines[i].substr(first + 1, close - first - 1).c_str(), section) != 0) {
+            continue;
         }
+        *start = i;
+        *end = lines.size();
+        for (size_t j = i + 1; j < lines.size(); ++j) {
+            size_t f2 = lines[j].find_first_not_of(" \t");
+            if (f2 != std::string::npos && lines[j][f2] == '[') {
+                *end = j;
+                break;
+            }
+        }
+        return true;
     }
+    return false;
+}
 
-    char newLine[64];
-    snprintf(newLine, sizeof(newLine), "%s=%d", key, value);
+// Non-destructive INI key setter. Replaces an existing `key=value` line, appends
+// it to the end of [section], or creates the section at the end of the file.
+// Every other line is preserved, so mod-specific sections stay intact.
+static void setIniString(std::vector<std::string>& lines, const char* section, const char* key, const char* value)
+{
+    const std::string keyEq = std::string(key) + "=";
+    const std::string newLine = std::string(key) + "=" + value;
 
-    if (sectionStart == std::string::npos) {
+    size_t sectionStart = 0;
+    size_t sectionEnd = 0;
+    if (!findIniSection(lines, section, &sectionStart, &sectionEnd)) {
         if (!lines.empty() && !lines.back().empty()) {
             lines.push_back("");
         }
-        lines.push_back(sectionHeader);
+        lines.push_back(std::string("[") + section + "]");
         lines.push_back(newLine);
         return;
     }
@@ -936,24 +916,129 @@ static void setIniInt(std::vector<std::string>& lines, const char* section, cons
     lines.insert(lines.begin() + sectionEnd, newLine);
 }
 
+static void setIniInt(std::vector<std::string>& lines, const char* section, const char* key, int value)
+{
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%d", value);
+    setIniString(lines, section, key, buf);
+}
+
+// At most three decimals, trailing zeros trimmed ("0.250" -> "0.25", "450.000" -> "450").
+static void setIniFloat(std::vector<std::string>& lines, const char* section, const char* key, float value)
+{
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%.3f", value);
+    char* dot = strchr(buf, '.');
+    if (dot != nullptr) {
+        char* end = buf + strlen(buf) - 1;
+        while (end > dot && *end == '0') {
+            *end-- = '\0';
+        }
+        if (end == dot) {
+            *end = '\0';
+        }
+    }
+    setIniString(lines, section, key, buf);
+}
+
+static void ps4ReadIniLines(const char* path, std::vector<std::string>& lines)
+{
+    lines.clear();
+    FILE* f = fopen(path, "r");
+    if (f == nullptr) {
+        return;
+    }
+    char line[512];
+    while (fgets(line, sizeof(line), f) != nullptr) {
+        size_t len = strlen(line);
+        while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
+            line[--len] = '\0';
+        }
+        lines.push_back(line);
+    }
+    fclose(f);
+}
+
+static bool ps4WriteIniLines(const char* path, const std::vector<std::string>& lines)
+{
+    FILE* f = fopen(path, "w");
+    if (f == nullptr) {
+        ps4Log("[ps4] fopen(%s) for write failed errno=%d\n", path, errno);
+        return false;
+    }
+    for (const std::string& l : lines) {
+        fprintf(f, "%s\n", l.c_str());
+    }
+    fflush(f);
+    int fd = fileno(f);
+    if (fd >= 0) {
+        fsync(fd);
+    }
+    fclose(f);
+    return true;
+}
+
+// Writes every [controls] key (tuning + button mapping), creating the section
+// with its header comment when absent.
+static void ps4ApplyControlsToIniLines(std::vector<std::string>& lines, const Ps4ControlsConfig& ctrl)
+{
+    size_t start = 0;
+    size_t end = 0;
+    if (!findIniSection(lines, "controls", &start, &end)) {
+        if (!lines.empty() && !lines.back().empty()) {
+            lines.push_back("");
+        }
+        lines.push_back("[controls]");
+        lines.push_back("; Gamepad tuning and button mapping: physical button = action token.");
+        lines.push_back("; btn_share is the TOUCHPAD CLICK; the Share key is reserved by the PS4 system.");
+    }
+
+    setIniFloat(lines, "controls", "touch_sensitivity", ctrl.touchSensitivity);
+    setIniFloat(lines, "controls", "touch_accel", ctrl.touchAccel);
+    setIniFloat(lines, "controls", "touch_smoothing", ctrl.touchSmoothing);
+    setIniFloat(lines, "controls", "touch_deadzone", ctrl.touchDeadzone);
+    setIniFloat(lines, "controls", "cursor_speed", ctrl.cursorSpeed);
+    setIniFloat(lines, "controls", "cursor_speed_boost", ctrl.cursorSpeedBoost);
+    setIniFloat(lines, "controls", "walk_deadzone", ctrl.walkDeadzone);
+    setIniFloat(lines, "controls", "run_threshold", ctrl.runThreshold);
+    setIniInt(lines, "controls", "camera_deadzone_x", ctrl.cameraDeadzoneX);
+    setIniInt(lines, "controls", "camera_deadzone_y", ctrl.cameraDeadzoneY);
+    setIniString(lines, "controls", "world_left_stick", ps4WrsName(ctrl.worldLeftStick));
+    setIniString(lines, "controls", "world_right_stick", ps4WrsName(ctrl.worldRightStick));
+    setIniInt(lines, "controls", "combat_auto_aim", ctrl.combatAutoAim);
+    setIniInt(lines, "controls", "world_auto_aim", ctrl.worldAutoAim);
+    setIniInt(lines, "controls", "auto_aim_whole_map", ctrl.autoAimWholeMap);
+    setIniInt(lines, "controls", "auto_aim_center_camera", ctrl.autoAimCenterCamera);
+    setIniInt(lines, "controls", "melee_approach", ctrl.meleeApproach);
+    setIniInt(lines, "controls", "loot_assist", ctrl.lootAssist);
+    setIniInt(lines, "controls", "loot_snap_distance", ctrl.lootSnapDistance);
+    setIniInt(lines, "controls", "loot_skip_empty", ctrl.lootSkipEmpty);
+    setIniInt(lines, "controls", "circle_close_all", ctrl.circleCloseAll);
+    setIniString(lines, "controls", "scale_mode", ps4ScaleModeName(ctrl.scaleMode));
+    setIniFloat(lines, "controls", "stick_deadzone", ctrl.stickDeadzone);
+    setIniFloat(lines, "controls", "stick_curve", ctrl.stickCurve);
+    setIniInt(lines, "controls", "walk_project_tiles", ctrl.walkProjectTiles);
+    setIniInt(lines, "controls", "run_settle_ms", ctrl.runSettleMs);
+    setIniFloat(lines, "controls", "touch_max_gain", ctrl.touchMaxGain);
+    setIniInt(lines, "controls", "touch_tap_ms", ctrl.touchTapMs);
+    setIniInt(lines, "controls", "touch_tap_move", ctrl.touchTapMove);
+    setIniInt(lines, "controls", "dpad_repeat_ms", ctrl.dpadRepeatMs);
+    setIniFloat(lines, "controls", "camera_pan_threshold", ctrl.cameraPanThreshold);
+    for (int i = 0; i < kPs4ButtonBindingCount; ++i) {
+        setIniString(lines, "controls", s_buttonBindings[i].key,
+            ps4ActionName(ctrl.*(s_buttonBindings[i].member)));
+    }
+    setIniInt(lines, "controls", "ime", ctrl.imeEnabled);
+    setIniInt(lines, "controls", "ime_autoconfirm", ctrl.imeAutoconfirm);
+}
+
 bool ps4WriteFallout2CfgState(const Ps4Fallout2CfgState& state, bool applyAllRecommendedQol)
 {
     char cfgPath[512];
-    snprintf(cfgPath, sizeof(cfgPath), "%s/fallout2.cfg", ps4GetDataPath());
+    ps4ResolveFallout2Cfg(nullptr, cfgPath, sizeof(cfgPath));
 
     std::vector<std::string> lines;
-    FILE* f = fopen(cfgPath, "r");
-    if (f != nullptr) {
-        char line[512];
-        while (fgets(line, sizeof(line), f) != nullptr) {
-            size_t len = strlen(line);
-            while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
-                line[--len] = '\0';
-            }
-            lines.push_back(line);
-        }
-        fclose(f);
-    }
+    ps4ReadIniLines(cfgPath, lines);
 
     // [screen] always comes from the state, preserving a custom/user resolution.
     setIniInt(lines, "screen", "resolution_x", state.resX);
@@ -1007,18 +1092,26 @@ bool ps4WriteFallout2CfgState(const Ps4Fallout2CfgState& state, bool applyAllRec
         setIniInt(lines, "combat_ai", "npcs_try_to_spend_extra_ap", 2);
     }
 
-    f = fopen(cfgPath, "w");
-    if (f == nullptr) {
-        ps4Log("[ps4] ps4WriteFallout2CfgState: fopen(%s) failed errno=%d\n", cfgPath, errno);
+    ps4ApplyControlsToIniLines(lines, g_ps4Controls);
+
+    if (!ps4WriteIniLines(cfgPath, lines)) {
         return false;
     }
-    for (const std::string& l : lines) {
-        fprintf(f, "%s\n", l.c_str());
-    }
-    fflush(f);
-    fclose(f);
     ps4Log("[ps4] wrote fallout2.cfg (%zu lines, recommended=%d)\n", lines.size(), applyAllRecommendedQol ? 1 : 0);
     return true;
+}
+
+void ps4SaveControlsConfig()
+{
+    char cfgPath[512];
+    ps4ResolveFallout2Cfg(nullptr, cfgPath, sizeof(cfgPath));
+
+    std::vector<std::string> lines;
+    ps4ReadIniLines(cfgPath, lines);
+    ps4ApplyControlsToIniLines(lines, g_ps4Controls);
+    if (ps4WriteIniLines(cfgPath, lines)) {
+        ps4Log("[ps4] wrote [controls] to %s\n", cfgPath);
+    }
 }
 
 // Opens a read-only asset packaged in /app0/assets/<assetName>.
@@ -1150,34 +1243,34 @@ void ps4EnsureGameConfigsInitialized(const char* folderPath)
         ps4CopyBundledAssetToFile("f2_res.dat", resCandidate, /*overwriteIfDifferentSize=*/false);
     }
 
-    // 3. Seed or update ps4_controls.cfg and fallout2.cfg
-    char controlsCandidate[512];
-    char controlsPath[512];
-    snprintf(controlsCandidate, sizeof(controlsCandidate), "%s/ps4_controls.cfg", folderPath);
-    bool hasControls = ps4ResolveCaseInsensitive(controlsCandidate, controlsPath, sizeof(controlsPath));
+    // 3. Seed fallout2.cfg ([controls] lives inside it); drop the legacy file.
+    char legacyCandidate[512];
+    char legacyPath[512];
+    snprintf(legacyCandidate, sizeof(legacyCandidate), "%s/ps4_controls.cfg", folderPath);
+    if (ps4ResolveCaseInsensitive(legacyCandidate, legacyPath, sizeof(legacyPath))) {
+        unlink(legacyPath);
+        ps4Log("[ps4] removed legacy %s\n", legacyPath);
+    }
 
     char cfgCandidate[512];
     char cfgPath[512];
     snprintf(cfgCandidate, sizeof(cfgCandidate), "%s/fallout2.cfg", folderPath);
     bool hasCfg = ps4ResolveCaseInsensitive(cfgCandidate, cfgPath, sizeof(cfgPath));
-
-    if (!hasControls) {
-        // First PS4 launch for this folder: start from the PS4 control defaults.
-        g_ps4Controls = Ps4ControlsConfig();
-        ps4SaveControlsConfig();
-    }
+    bool hasControls = ps4HasControlsConfig(folderPath);
 
     if (!hasCfg) {
-        // Seed the commented template from /app0/assets/fallout2.cfg first (if present)
-        // so [system]/[sound] and comments are preserved, then apply the PS4 QoL profile.
+        // Fresh folder: start from the bundled template (comments + mod sections),
+        // then apply the PS4 defaults including [controls].
         ps4CopyBundledAssetToFile("fallout2.cfg", cfgCandidate, /*overwriteIfDifferentSize=*/false);
+        g_ps4Controls = Ps4ControlsConfig();
         Ps4Fallout2CfgState state;
         ps4WriteFallout2CfgState(state, true);
     } else if (!hasControls) {
-        // An existing fallout2.cfg (copied from PC), first PS4 launch: inject the
-        // [screen] + QoL keys non-destructively, keeping mod-specific sections.
+        // Existing PC-authored fallout2.cfg on its first PS4 launch: inject the
+        // [screen]/QoL keys and a fresh [controls] section, preserving the rest.
         Ps4Fallout2CfgState state;
         ps4ReadFallout2CfgState(&state);
+        g_ps4Controls = Ps4ControlsConfig();
         ps4WriteFallout2CfgState(state, true);
     }
 
@@ -1222,6 +1315,10 @@ bool ps4MountData()
         char cwdBuf[512];
         const char* cwd = getcwd(cwdBuf, sizeof(cwdBuf));
         ps4Log("[ps4] using data dir %s (getcwd=%s)\n", chosenPath.c_str(), cwd != nullptr ? cwd : "NULL");
+
+        // Load the gamepad mapping/tuning from [controls]. The boot menu already
+        // did this when it was opened; this covers the auto-launch path.
+        ps4ReadControlsConfig();
 
         FILE* f = compat_fopen("master.dat", "rb");
         if (f != nullptr) {

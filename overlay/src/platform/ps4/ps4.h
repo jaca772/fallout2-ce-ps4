@@ -80,8 +80,9 @@ enum Ps4ScaleMode {
     PS4_SCALE_INTEGER = 2,   // Center with nearest integer scale factor
 };
 
-// User-tunable gamepad settings, loaded from /data/fallout2/ps4_controls.cfg so
-// they can be edited over FTP without rebuilding. See ps4ReadControlsConfig.
+// User-tunable gamepad settings, stored in the [controls] section of the game
+// folder's fallout2.cfg so they can be edited over FTP without rebuilding.
+// See ps4ReadControlsConfig.
 struct Ps4ControlsConfig {
     float touchSensitivity = 0.25f;  // DS4 touchpad base gain when moving SLOWLY (precision)
     float touchAccel = 0.001f;        // extra gain per unit of finger speed (0 = linear/off)
@@ -105,13 +106,13 @@ struct Ps4ControlsConfig {
     // Button remapping (each is a PS4_ACT_* value).
     int actCross = PS4_ACT_LMB;      // Cross (X)
     int actCircle = PS4_ACT_RMB;     // Circle (O)
-    int actSquare = PS4_ACT_SKILLDEX;     // Square
+    int actSquare = PS4_ACT_INVENTORY;     // Square
     int actTriangle = PS4_ACT_CHARSHEET;   // Triangle
-    int actL1 = PS4_ACT_INVENTORY;         // L1
+    int actL1 = PS4_ACT_SKILLDEX;          // L1
     int actR1 = PS4_ACT_RELOAD;         // R1
     int actL3 = PS4_ACT_SWAPHANDS;         // left stick click
     int actR3 = PS4_ACT_COMBAT;         // right stick click
-    int actShare = PS4_ACT_PIPBOY;      // Share
+    int actShare = PS4_ACT_PIPBOY;      // touchpad click (the Share key is system-reserved)
     int actOptions = PS4_ACT_ESC;    // Options (read via native scePad)
     int worldLeftStick = PS4_WRS_CENTERED;
     // Aim assist (hold L2)
@@ -149,27 +150,43 @@ struct Ps4Fallout2CfgState {
     int subtitles = 1;
 };
 
-// Loads g_ps4Controls from /data/fallout2/ps4_controls.cfg (writing a commented
-// default template if the file doesn't exist yet). Must run after ps4MountData().
+// Reads the [controls] section of <ps4GetDataPath()>/fallout2.cfg into
+// g_ps4Controls. Starts from the struct defaults; appends a default [controls]
+// section when the file has none. Must run after ps4MountData().
 void ps4ReadControlsConfig();
 
-// Writes the current g_ps4Controls to <ps4GetDataPath()>/ps4_controls.cfg.
+// Writes g_ps4Controls to the [controls] section of the current folder's
+// fallout2.cfg, preserving every other line. Creates the section when missing.
 void ps4SaveControlsConfig();
+
+// True when <folderPath>/fallout2.cfg (default: ps4GetDataPath()) contains a
+// [controls] section. Section name is matched case-insensitively.
+bool ps4HasControlsConfig(const char* folderPath = nullptr);
 
 // Reads the display + QoL options used by the boot menu settings terminal from
 // <ps4GetDataPath()>/fallout2.cfg (resolution falls back to f2_res.ini).
 void ps4ReadFallout2CfgState(Ps4Fallout2CfgState* outState);
 
-// Non-destructively updates [screen]/[qol]/[ui]/[preferences]/[combat_ai] in
-// <ps4GetDataPath()>/fallout2.cfg. When applyAllRecommendedQol is true, forces the
-// full recommended PS4 QoL set (boot_menu_update.md section 2.2) in addition to
-// the values carried in [state].
+// Non-destructively updates [screen]/[qol]/[ui]/[preferences]/[combat_ai] and the
+// whole [controls] section in <ps4GetDataPath()>/fallout2.cfg. When
+// applyAllRecommendedQol is true, forces the full recommended PS4 QoL set
+// (boot_menu_update.md section 2.2) in addition to the values carried in [state].
 bool ps4WriteFallout2CfgState(const Ps4Fallout2CfgState& state, bool applyAllRecommendedQol);
 
-// Creates ps4_controls.cfg and fallout2.cfg for [folderPath] if this is its first
-// PS4 launch (missing ps4_controls.cfg or fallout2.cfg). Sets ps4SetDataPath
-// internally. Non-destructive to an existing fallout2.cfg.
+// Creates fallout2.cfg (and its [controls] section) for [folderPath] on its first
+// PS4 launch. Removes a stale ps4_controls.cfg. Sets ps4SetDataPath internally.
+// Non-destructive to an existing fallout2.cfg.
 void ps4EnsureGameConfigsInitialized(const char* folderPath);
+
+// Button remapping table shared by the config reader/writer and the boot menu.
+// One entry per physical button; index order is the boot menu order.
+int ps4ButtonBindingCount();
+const char* ps4ButtonBindingLabel(int index);   // e.g. "Touchpad Click"
+int ps4ButtonBindingAction(int index);          // current PS4_ACT_* value
+void ps4ButtonBindingCycle(int index, int dir); // dir = -1 / +1, wraps
+
+// Human-readable action name for the boot menu ("Inventory", "Pip-Boy", ...).
+const char* ps4ActionLabel(int action);
 
 // Escapes the sandbox via libjbc credential jailbreak (prison0) and chdir's to
 // the selected game folder. Must run AFTER SDL_Init but before the engine reads
