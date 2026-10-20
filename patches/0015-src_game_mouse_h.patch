@@ -1,5 +1,5 @@
 diff --git a/src/game_mouse.h b/src/game_mouse.h
-index d1c2b230..2ce63d23 100644
+index 3de3b7e7..9973044d 100644
 --- a/src/game_mouse.h
 +++ b/src/game_mouse.h
 @@ -78,6 +78,10 @@ constexpr inline MouseCursorType operator+(MouseCursorType lhs, MouseCursorType

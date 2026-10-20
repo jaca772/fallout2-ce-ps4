@@ -1,8 +1,8 @@
 diff --git a/src/dbox.cc b/src/dbox.cc
-index d0f37770..8a8da217 100644
+index 6978f0b5..e0d3a7cf 100644
 --- a/src/dbox.cc
 +++ b/src/dbox.cc
-@@ -24,6 +24,11 @@
+@@ -26,6 +26,11 @@
  #include "window_manager.h"
  #include "word_wrap.h"
  
@@ -13,8 +13,8 @@ index d0f37770..8a8da217 100644
 +
  namespace fallout {
  
- namespace {
-@@ -280,6 +285,24 @@ static void fileDialogRenderFileList(unsigned char* buffer, char** fileList, int
+ static void fileDialogRenderFileList(unsigned char* buffer, char** fileList, int pageOffset, int fileListLength, int selectedIndex, int pitch);
+@@ -400,6 +405,24 @@ namespace {
  // TODO: see if it could be used for `showSaveFileDialog`
  static int _get_input_str(int win, int cancelKeyCode, std::string& text, int maxLength, int x, int y, ColorWithFlags textColor, Color backgroundColor, int flags)
  {
@@ -39,7 +39,7 @@ index d0f37770..8a8da217 100644
      int cursorWidth = fontGetStringWidth("_") - 4;
      int windowWidth = windowGetWidth(win);
      int lineHeight = fontGetLineHeight();
-@@ -935,6 +958,27 @@ int showSaveFileDialog(char* title, char** fileList, char* dest, int fileListLen
+@@ -960,6 +983,27 @@ int showSaveFileDialog(char* title, char** fileList, char* dest, int fileListLen
      }
      dest[fileNameLength] = '\0';
  

@@ -1,9 +1,9 @@
 diff --git a/src/svga.cc b/src/svga.cc
-index 28bd5a2a..74e58fda 100644
+index 9aa36bf6..b4b40018 100644
 --- a/src/svga.cc
 +++ b/src/svga.cc
-@@ -22,6 +22,10 @@
- #include "win32.h"
+@@ -23,6 +23,10 @@
+ #include "window_manager.h"
  #include "window_manager_private.h"
  
 +#ifdef __PS4__
@@ -13,7 +13,7 @@ index 28bd5a2a..74e58fda 100644
  namespace fallout {
  
  static bool createRenderer(int width, int height);
-@@ -160,6 +164,20 @@ int _init_vesa_mode(int width, int height)
+@@ -161,6 +165,20 @@ int _init_vesa_mode(int width, int height)
  // 0x4CAEDC GNW95_init_window
  int _GNW95_init_window(int width, int height, WindowMode mode, int scale)
  {
@@ -34,7 +34,7 @@ index 28bd5a2a..74e58fda 100644
      if (gSdlWindow == nullptr) {
          SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
  
-@@ -187,6 +205,7 @@ int _GNW95_init_window(int width, int height, WindowMode mode, int scale)
+@@ -188,6 +206,7 @@ int _GNW95_init_window(int width, int height, WindowMode mode, int scale)
      }
  
      return 0;
@@ -42,7 +42,7 @@ index 28bd5a2a..74e58fda 100644
  }
  
  // 0x4CAF9C GNW95_init_DirectDraw
-@@ -353,12 +372,33 @@ int screenGetVisibleHeight()
+@@ -354,12 +373,33 @@ int screenGetVisibleHeight()
  // returns true if the game is running in fullscreen mode, false otherwise (including windowed fullscreen mode)
  bool screenIsExclusiveFullscreen()
  {
@@ -76,7 +76,7 @@ index 28bd5a2a..74e58fda 100644
      gSdlRenderer = SDL_CreateRenderer(gSdlWindow, -1, 0);
      if (gSdlRenderer == nullptr) {
          return false;
-@@ -384,10 +424,14 @@ static bool createRenderer(int width, int height)
+@@ -385,10 +425,14 @@ static bool createRenderer(int width, int height)
      }
  
      return true;
@@ -91,7 +91,7 @@ index 28bd5a2a..74e58fda 100644
      if (gSdlTextureSurface != nullptr) {
          SDL_FreeSurface(gSdlTextureSurface);
          gSdlTextureSurface = nullptr;
-@@ -470,6 +514,12 @@ void renderFpsCounter()
+@@ -474,6 +518,12 @@ void renderFpsCounter()
  
  void renderPresent()
  {

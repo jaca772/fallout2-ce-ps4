@@ -1,13 +1,13 @@
 diff --git a/src/interface.cc b/src/interface.cc
-index 6486ef98..81ed6596 100644
+index 7639eefb..9c29f72a 100644
 --- a/src/interface.cc
 +++ b/src/interface.cc
 @@ -2271,6 +2271,68 @@ static int _intface_item_reload()
      return 0;
  }
  
-+// PS4 gamepad: reload the active-hand weapon directly, without first cycling the
 +#ifdef __PS4__
++// PS4 gamepad: reload the active-hand weapon directly, without first cycling the
 +// item action to "reload". Honors AP while in combat. Returns 0 on a successful
 +// reload, -1 otherwise (no weapon, not an ammo weapon, already full, or — in
 +// combat — not enough AP). Mirrors the RELOAD branch of _intface_use_item but

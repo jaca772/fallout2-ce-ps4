@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index c3a21170..6095d62f 100644
+index ed27a2e8..998186f5 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -376,6 +376,9 @@ if(IOS)
+@@ -377,6 +377,9 @@ if(IOS)
      )
  endif()
  
@@ -12,7 +12,7 @@ index c3a21170..6095d62f 100644
  if(WIN32)
      target_compile_definitions(${EXECUTABLE_NAME} PUBLIC
          _CRT_SECURE_NO_WARNINGS
-@@ -466,7 +469,11 @@ if(APPLE)
+@@ -467,7 +470,11 @@ if(APPLE)
      set(MACOSX_BUNDLE_BUNDLE_VERSION "1.3.0")
  endif()
  
@@ -25,7 +25,7 @@ index c3a21170..6095d62f 100644
      if(FALLOUT_VENDORED)
          add_subdirectory("third_party/zlib")
          add_subdirectory("third_party/sdl2")
-@@ -532,7 +539,16 @@ target_link_libraries(${EXECUTABLE_NAME} ${SDL2_LIBRARIES})
+@@ -533,7 +540,16 @@ target_link_libraries(${EXECUTABLE_NAME} ${SDL2_LIBRARIES})
  target_link_libraries(${EXECUTABLE_NAME} ${SDL2_MAIN_LIBRARIES})
  target_include_directories(${EXECUTABLE_NAME} PRIVATE ${SDL2_INCLUDE_DIRS})
  
@@ -43,7 +43,7 @@ index c3a21170..6095d62f 100644
      add_executable(ce-dat-tool
          "tools/dat_tool.cc"
          "tools/dat_archive.cc"
-@@ -618,7 +634,7 @@ if((NOT ANDROID) AND (NOT IOS) AND (NOT CMAKE_SYSTEM_NAME MATCHES "Emscripten"))
+@@ -619,7 +635,7 @@ if((NOT ANDROID) AND (NOT IOS) AND (NOT CMAKE_SYSTEM_NAME MATCHES "Emscripten"))
      endif()
  endif()
  

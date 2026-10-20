@@ -1,5 +1,5 @@
 diff --git a/src/loadsave.cc b/src/loadsave.cc
-index f0dc6942..cafcc8a8 100644
+index c160d770..b2d96e4a 100644
 --- a/src/loadsave.cc
 +++ b/src/loadsave.cc
 @@ -7,6 +7,12 @@

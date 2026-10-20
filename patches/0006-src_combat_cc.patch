@@ -1,5 +1,5 @@
 diff --git a/src/combat.cc b/src/combat.cc
-index 744995d0..9720200d 100644
+index 54c6a8ea..9be36d57 100644
 --- a/src/combat.cc
 +++ b/src/combat.cc
 @@ -1932,6 +1932,12 @@ static Object* gCalledShotCritter;
@@ -13,9 +13,9 @@ index 744995d0..9720200d 100644
 +static bool gCalledShotWindowActive = false;
 +
  // 0x56D378 combat_elev
- static int _combat_elev;
+ static MapElevation _combat_elev;
  
-@@ -2078,6 +2084,10 @@ void combatReset()
+@@ -2086,6 +2092,10 @@ void combatReset()
      // SFALL
      criticalsReset();
      combat_reset_hit_location_penalty();
@@ -26,7 +26,7 @@ index 744995d0..9720200d 100644
  }
  
  // 0x420E14
-@@ -2088,6 +2098,10 @@ void combatExit()
+@@ -2096,6 +2106,10 @@ void combatExit()
  
      // SFALL
      criticalsExit();
@@ -37,7 +37,7 @@ index 744995d0..9720200d 100644
  }
  
  // 0x420E24
-@@ -3202,6 +3216,10 @@ static int _combat_input()
+@@ -3270,6 +3284,10 @@ static int _combat_input()
  
          int keyCode = inputGetInput();
  
@@ -48,7 +48,7 @@ index 744995d0..9720200d 100644
          // SFALL: CombatLoopHook.
          sfall_gl_scr_process_main();
  
-@@ -5767,6 +5785,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
+@@ -5846,6 +5864,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
  
      windowRefresh(gCalledShotWindow);
  
@@ -57,7 +57,7 @@ index 744995d0..9720200d 100644
      bool gameUiWasDisabled = gameUiIsDisabled();
      if (gameUiWasDisabled) {
          gameUiEnable();
-@@ -5807,6 +5827,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
+@@ -5886,6 +5906,8 @@ static int calledShotSelectHitLocation(Object* critter, HitLocation* hitLocation
  
      windowDestroy(gCalledShotWindow);
  
@@ -66,7 +66,7 @@ index 744995d0..9720200d 100644
      if (eventCode == KEY_ESCAPE) {
          return -1;
      }
-@@ -5993,9 +6015,40 @@ void _combat_attack_this(Object* target)
+@@ -6072,9 +6094,40 @@ void _combat_attack_this(Object* target)
      }
  }
  
