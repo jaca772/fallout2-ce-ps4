@@ -29,7 +29,12 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Pinned, NOT ubuntu-latest. The seeded OpenOrbis toolchain ships a dynamically
+    # linked lld that needs libxml2.so.2. Ubuntu 26.04 (which ubuntu-latest migrated
+    # to) ships libxml2 2.15, whose SONAME is libxml2.so.16 -- libxml2.so.2 does not
+    # exist there under any package name, so the linker cannot run at all. 24.04 is
+    # also the exact Ubuntu this port is built and verified on locally.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -77,10 +82,11 @@ jobs:
           sudo tar -xzf /tmp/toolchain.tar.gz -C /opt/pacbrew
 
       # The seeded toolchain's ld.lld is dynamically linked against host libs
-      # (libxml2, libicu, zlib, libtinfo). A bare runner image lacks them, so the
-      # very first CMake compiler check dies with
+      # (libxml2, libicu, zlib, libtinfo). The runner image does not guarantee them,
+      # and without libxml2.so.2 the very first CMake compiler check dies with
       #   ld.lld: error while loading shared libraries: libxml2.so.2
-      # Install them before anything invokes the toolchain.
+      # Install them before anything invokes the toolchain. (This only works on
+      # 24.04 -- see the runs-on comment above.)
       - name: Install toolchain host dependencies
         run: |
           set -euxo pipefail
