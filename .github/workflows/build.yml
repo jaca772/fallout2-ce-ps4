@@ -76,6 +76,17 @@ jobs:
           sudo mkdir -p /opt/pacbrew
           sudo tar -xzf /tmp/toolchain.tar.gz -C /opt/pacbrew
 
+      # The seeded toolchain's ld.lld is dynamically linked against host libs
+      # (libxml2, libicu, zlib, libtinfo). A bare runner image lacks them, so the
+      # very first CMake compiler check dies with
+      #   ld.lld: error while loading shared libraries: libxml2.so.2
+      # Install them before anything invokes the toolchain.
+      - name: Install toolchain host dependencies
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libxml2 libtinfo6 zlib1g libstdc++6
+
       - name: Build pkg
         run: |
           set -euxo pipefail
