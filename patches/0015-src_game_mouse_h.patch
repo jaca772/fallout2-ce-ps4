@@ -1,8 +1,8 @@
 diff --git a/src/game_mouse.h b/src/game_mouse.h
-index 3de3b7e7..9973044d 100644
+index c50843a1..193f5a02 100644
 --- a/src/game_mouse.h
 +++ b/src/game_mouse.h
-@@ -78,6 +78,10 @@ constexpr inline MouseCursorType operator+(MouseCursorType lhs, MouseCursorType
+@@ -80,6 +80,10 @@ constexpr inline MouseCursorType operator+(MouseCursorType lhs, MouseCursorType
  }
  
  extern bool _gmouse_clicked_on_edge;

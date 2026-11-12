@@ -1,5 +1,5 @@
 diff --git a/src/settings.cc b/src/settings.cc
-index bd38ae11..b648c2a7 100644
+index 367766f6..0dd06e4b 100644
 --- a/src/settings.cc
 +++ b/src/settings.cc
 @@ -255,7 +255,11 @@ void initSettingsRegistry(bool isMapper)
@@ -14,7 +14,7 @@ index bd38ae11..b648c2a7 100644
      SETTING(color_cycling);
      SETTING(cycle_speed_factor);
      SETTING(hashing);
-@@ -439,6 +443,13 @@ bool settingsInit(bool isMapper, int argc, char** argv)
+@@ -440,6 +444,13 @@ bool settingsInit(bool isMapper, int argc, char** argv)
          entry.read();
      }
  

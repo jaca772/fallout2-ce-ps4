@@ -1,8 +1,8 @@
 diff --git a/src/interface.cc b/src/interface.cc
-index 7639eefb..9c29f72a 100644
+index 17bdfc65..8b0db611 100644
 --- a/src/interface.cc
 +++ b/src/interface.cc
-@@ -2271,6 +2271,68 @@ static int _intface_item_reload()
+@@ -2286,6 +2286,68 @@ static int _intface_item_reload()
      return 0;
  }
  
@@ -61,7 +61,7 @@ index 7639eefb..9c29f72a 100644
 +
 +    interfaceUpdateItems(false, INTERFACE_ITEM_ACTION_DEFAULT, INTERFACE_ITEM_ACTION_DEFAULT);
 +
-+    const char* sfx = sfxBuildWeaponName(WEAPON_SOUND_EFFECT_READY, weapon, HIT_MODE_RIGHT_WEAPON_PRIMARY, nullptr);
++    const char* sfx = sfxBuildWeaponName(WeaponSoundEffect::Ready, weapon, HIT_MODE_RIGHT_WEAPON_PRIMARY, nullptr);
 +    soundPlayFile(sfx);
 +
 +    return 0;

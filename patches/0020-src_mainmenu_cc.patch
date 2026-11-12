@@ -1,8 +1,8 @@
 diff --git a/src/mainmenu.cc b/src/mainmenu.cc
-index de171402..259bc5da 100644
+index f5e5a13f..aae197e6 100644
 --- a/src/mainmenu.cc
 +++ b/src/mainmenu.cc
-@@ -483,8 +483,8 @@ static void mainMenuDrawButtonLabels(const MainMenuLayout& layout, const MainMen
+@@ -492,8 +492,8 @@ static void mainMenuDrawButtonLabels(const MainMenuLayout& layout, const MainMen
  {
      MessageListItem msg;
      ColorWithFlags fontSettings = COLOR_YELLOW_2 | DRAW_TEXT_FLAG_NONE;
